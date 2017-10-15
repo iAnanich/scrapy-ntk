@@ -1,7 +1,6 @@
 import datetime
 import logging
 import time
-import abc
 
 from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project

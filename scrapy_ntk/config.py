@@ -79,7 +79,7 @@ class SettingsMaster:
         return dictionary
 
     def _parse_file(self) -> dict:
-        return json.load(open(self.path_to_config_file(self.options_filename)))
+        return json.load(open(self.options_filename))
 
     @staticmethod
     def path_to_config_file(file_name: str,
