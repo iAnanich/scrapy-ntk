@@ -9,6 +9,13 @@ JOBKEY_DEFAULT = '0/0/0'
 _JOBKEY = 'SHUB_JOBKEY'
 
 
+def spider_to_root_path_join(from_file: str, target_file: str):
+    return os.path.join(
+        os.path.dirname(from_file),
+        os.path.pardir, os.path.pardir,
+        target_file)
+
+
 class SettingsMaster:
     """ Class for control of given at start arguments, and some environment
     variables. Arguments can be get from spider too.
@@ -29,11 +36,17 @@ class SettingsMaster:
         self._file_dict = file_args or self.parse_file(file_path)
         self._shub_jobkey = shub_jobkey or self._jobkey_handle()
 
-    @staticmethod
-    def parse_file(path: os.PathLike) -> dict:
+    @classmethod
+    def parse_file(cls, path: os.PathLike) -> dict:
         with open(path, 'r') as file:
             dictionary = json.load(file)
         return dictionary
+
+    @classmethod
+    def parse_config(cls, spider_file_path: str,
+                     config_file_name: str='config.json'):
+        return cls.parse_file(spider_to_root_path_join(spider_file_path,
+                                                       config_file_name))
 
     def get_value(self, key: str,
                   args_only: bool =False,
