@@ -23,10 +23,17 @@ class SettingsMaster:
 
     def configure(self, cmd_args: dict=None,
                   file_args: dict=None,
+                  file_path: os.PathLike=None,
                   shub_jobkey: dict=None):
         self._args_dict = cmd_args or self._parse_arguments()
-        self._file_dict = file_args or self._parse_file()
+        self._file_dict = file_args or self.parse_file(file_path)
         self._shub_jobkey = shub_jobkey or self._jobkey_handle()
+
+    @staticmethod
+    def parse_file(path: os.PathLike) -> dict:
+        with open(path, 'r') as file:
+            dictionary = json.load(file)
+        return dictionary
 
     def get_value(self, key: str,
                   args_only: bool =False,
@@ -78,12 +85,6 @@ class SettingsMaster:
             if arguments[i] == '-a':
                 args = arguments[i+1].split('=')
                 dictionary[args[0]] = args[1]
-        return dictionary
-
-    @staticmethod
-    def parse_file(path: os.PathLike) -> dict:
-        with open(path, 'r') as file:
-            dictionary = json.load(file)
         return dictionary
 
     # ============
