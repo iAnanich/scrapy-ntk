@@ -5,9 +5,6 @@ import sys
 WEBRANDOMPROXY_URL = 'https://proxy-spider.com/api/proxies.example.txt'
 JOBKEY_DEFAULT = '0/0/0'
 
-# config json files
-OPTIONS_FILENAME = 'config.json'
-
 # variable names
 _JOBKEY = 'SHUB_JOBKEY'
 
@@ -18,13 +15,18 @@ class SettingsMaster:
     **NOTE**: contains only `str` objects."""
 
     jobkey_env_varname = _JOBKEY
-    options_filename = OPTIONS_FILENAME
-    _file_level = 3
 
     def __init__(self):
-        self._args_dict = self._parse_arguments()
-        self._file_dict = self._parse_file()
-        self._shub_jobkey = self._jobkey_handle()
+        self._args_dict = None
+        self._file_dict = None
+        self._shub_jobkey = None
+
+    def configure(self, cmd_args: dict=None,
+                  file_args: dict=None,
+                  shub_jobkey: dict=None):
+        self._args_dict = cmd_args or self._parse_arguments()
+        self._file_dict = file_args or self._parse_file()
+        self._shub_jobkey = shub_jobkey or self._jobkey_handle()
 
     def get_value(self, key: str,
                   args_only: bool =False,
@@ -78,17 +80,11 @@ class SettingsMaster:
                 dictionary[args[0]] = args[1]
         return dictionary
 
-    def _parse_file(self) -> dict:
-        return json.load(open(self.options_filename))
-
     @staticmethod
-    def path_to_config_file(file_name: str,
-                            file_level: int =_file_level) -> str:
-        path = __file__
-        for _ in range(file_level):
-            # wrap with parent directory
-            path = os.path.abspath(os.path.join(path, os.pardir))
-        return os.path.join(path, file_name)
+    def parse_file(path: os.PathLike) -> dict:
+        with open(path, 'r') as file:
+            dictionary = json.load(file)
+        return dictionary
 
     # ============
     #  properties

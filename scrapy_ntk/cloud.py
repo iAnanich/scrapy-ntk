@@ -19,9 +19,6 @@ class SHub:
     and uses only it's resources (job history).
     """
 
-    _default_api_key = cfg.api_key
-    _default_project_id = cfg.current_project_id
-
     _logger = logger
 
     _unset_value = None
@@ -79,15 +76,11 @@ class SHub:
     """
     @property
     def default_api_key(self) -> str:
-        if self._default_api_key is None:
-            raise ValueError
-        return self._default_api_key
+        return cfg.api_key
 
     @property
     def default_project_id(self) -> str:
-        if self._default_project_id is None:
-            raise ValueError
-        return self._default_project_id
+        return cfg.current_project_id
 
     @property
     def default_spider_name(self) -> str:

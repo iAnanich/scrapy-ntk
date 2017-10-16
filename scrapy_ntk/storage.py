@@ -23,25 +23,21 @@ class GSpreadMaster:
 
     _secret_file_name = 'client-secret.json'  # library_depend
 
-    sheet_name = cfg.spreadsheet_title
-    spider_to_worksheet_dict = cfg.spider_to_worksheet_dict
-
     def __init__(self):
-        self._path_to_secret = cfg.path_to_config_file(self._secret_file_name)
         self._credentials = self._get_credentials()
         self._client = self._get_client()
-        self.spreadsheet = self._client.open(self.sheet_name)
+        self.spreadsheet = self._client.open(cfg.spreadsheet_title)
 
     def _get_credentials(self) -> Creds:
         return Creds.from_json_keyfile_name(
-            self._path_to_secret, ['https://spreadsheets.google.com/feeds'])
+            self._secret_file_name, ['https://spreadsheets.google.com/feeds'])
 
     def _get_client(self) -> gspread.Client:
         return gspread.authorize(self._credentials)
 
     def get_worksheet_by_spider(self, spider: scrapy.spiders.Spider) -> gspread.Worksheet:
         try:
-            index = self.spider_to_worksheet_dict[spider.name]
+            index = cfg.spider_to_worksheet_dict[spider.name]
         except KeyError:
             raise RuntimeError('No worksheet configured for this spider: {}'.format(spider.name))
         try:
