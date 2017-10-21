@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='scrapy_ntk',
-    version='1.0',
+    version='1.1.1',
     license='MIT',
     author='Illia Ananich',
     author_email='illia.ananich@gmail.com',
