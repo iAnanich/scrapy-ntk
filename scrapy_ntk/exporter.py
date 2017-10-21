@@ -138,10 +138,10 @@ class GSpreadItemExporter(BaseItemExporter):
         )
 
     def _log_rows(self, rows: list or tuple):
-        string = 'Rows to write:['
+        string = 'Rows to write:'
         for row in rows:
             string += '\n\t("' + '", "'.join(row) + '")'
-        logger.debug(string + '\n]')
+        logger.debug(string)
 
     def __repr__(self):
         return '<{name} "{status}" items: {i}>'.format(
