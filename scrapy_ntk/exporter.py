@@ -23,23 +23,20 @@ def _to_bool(string: str) -> bool:
 class GSpreadItemExporter(BaseItemExporter):
 
     empty_cell = '-----'
-    open_template = cfg.gspread_prefixfmt
-    close_template = cfg.gspread_suffixfmt
-    date_format = cfg.gspread_datefmt
 
-    open_line = _to_bool(cfg.gspread_enable_prefix)
-    close_line = _to_bool(cfg.gspread_enable_suffix)
-
-    job_url = 'https://app.scrapinghub.com/p/{project_id}/{spider_id}/{job_id}' \
-        .format(
-            project_id=cfg.current_project_id,
-            spider_id=cfg.current_spider_id,
-            job_id=cfg.current_job_id,
-        )
+    @property
+    def job_url(self):
+        if self._job_url is None:
+            self._job_url = f'https://app.scrapinghub.com/p' \
+                            f'/{cfg.current_project_id}' \
+                            f'/{cfg.current_spider_id}' \
+                            f'/{cfg.current_job_id}'
+        return str(self._job_url)
 
     def __init__(self, **kwargs):
         self._spider = kwargs.pop('spider')
         self._worksheet = kwargs.pop('worksheet')
+        self._job_url = None
         # define
         self._items = []
         self._is_active = None
@@ -56,7 +53,7 @@ class GSpreadItemExporter(BaseItemExporter):
     def _starting_row(self):
         return GSpreadRow.to_tuple(
             url=self.empty_cell,
-            header=self.open_template.format(
+            header=cfg.gspread_prefixfmt.format(
                 date=datetime.now(),
                 name=self._spider.name,
             ),
@@ -70,7 +67,7 @@ class GSpreadItemExporter(BaseItemExporter):
     def _close_row(self):
         return GSpreadRow.to_tuple(
             url=self.empty_cell,
-            header=self.close_template.format(
+            header=cfg.gspread_suffixfmt.format(
                 date=datetime.now(),
                 count=str(len(self._items)),
             ),
@@ -82,11 +79,11 @@ class GSpreadItemExporter(BaseItemExporter):
 
     def convert_to_rows(self, items: list) -> list:
         res = []
-        if self.open_line:
+        if _to_bool(cfg.gspread_enable_prefix):
             res.append(self._starting_row)
         for item in items:
             res.append(GSpreadRow.to_tuple(item=item))
-        if self.close_line:
+        if _to_bool(cfg.gspread_enable_suffix):
             res.append(self._close_row)
         return res
 
@@ -141,10 +138,10 @@ class GSpreadItemExporter(BaseItemExporter):
         )
 
     def _log_rows(self, rows: list or tuple):
-        string = 'Rows to write:['
+        string = 'Rows to write:'
         for row in rows:
             string += '\n\t("' + '", "'.join(row) + '")'
-        logger.debug(string + '\n]')
+        logger.debug(string)
 
     def __repr__(self):
         return '<{name} "{status}" items: {i}>'.format(

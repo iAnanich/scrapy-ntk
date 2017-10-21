@@ -9,6 +9,13 @@ JOBKEY_DEFAULT = '0/0/0'
 _JOBKEY = 'SHUB_JOBKEY'
 
 
+def spider_to_root_path_join(from_file: str, target_file: str):
+    return os.path.join(
+        os.path.dirname(from_file),
+        os.path.pardir, os.path.pardir,
+        target_file)
+
+
 class SettingsMaster:
     """ Class for control of given at start arguments, and some environment
     variables. Arguments can be get from spider too.
@@ -16,17 +23,46 @@ class SettingsMaster:
 
     jobkey_env_varname = _JOBKEY
 
+    gspread_oauth2_credentials_file_name = 'client-secret.json'
+    config_json_file_name = 'config.json'
+
     def __init__(self):
+        self._project_root_path = None
         self._args_dict = None
         self._file_dict = None
         self._shub_jobkey = None
 
-    def configure(self, cmd_args: dict=None,
+        self._is_configured = False
+
+    def configure(self, project_root_path: os.PathLike,
+                  cmd_args: dict=None,
                   file_args: dict=None,
                   shub_jobkey: dict=None):
+        self._project_root_path = project_root_path
+
         self._args_dict = cmd_args or self._parse_arguments()
-        self._file_dict = file_args or self._parse_file()
+        self._file_dict = file_args or self.parse_config()
         self._shub_jobkey = shub_jobkey or self._jobkey_handle()
+
+        self._is_configured = True
+
+    def check(self):
+        if not self._is_configured:
+            raise ValueError('Settings are not configured yet.')
+        return True
+
+    def path_to_config_file(self, file_name='config.json'):
+        return os.path.join(self._project_root_path, file_name)
+
+    @classmethod
+    def parse_file(cls, path: os.PathLike or str) -> dict:
+        with open(path, 'r') as file:
+            dictionary = json.load(file)
+        return dictionary
+
+    def parse_config(self):
+        return self.parse_file(
+            self.path_to_config_file(self.config_json_file_name))
 
     def get_value(self, key: str,
                   args_only: bool =False,
@@ -80,15 +116,25 @@ class SettingsMaster:
                 dictionary[args[0]] = args[1]
         return dictionary
 
-    @staticmethod
-    def parse_file(path: os.PathLike) -> dict:
-        with open(path, 'r') as file:
-            dictionary = json.load(file)
-        return dictionary
-
     # ============
     #  properties
     # ============
+    @property
+    def is_configured(self):
+        return self.check()
+
+    @property
+    def project_root_path(self):
+        path = self._project_root_path
+        if path is None:
+            raise ValueError
+        return path
+
+    @property
+    def client_secret_path(self):
+        return self.path_to_config_file(
+            self.gspread_oauth2_credentials_file_name)
+
     # ScrapingHub
     @property
     def current_project_id(self) -> str:

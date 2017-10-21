@@ -30,7 +30,7 @@ class GSpreadMaster:
 
     def _get_credentials(self) -> Creds:
         return Creds.from_json_keyfile_name(
-            self._secret_file_name, ['https://spreadsheets.google.com/feeds'])
+            cfg.client_secret_path, ['https://spreadsheets.google.com/feeds'])
 
     def _get_client(self) -> gspread.Client:
         return gspread.authorize(self._credentials)
