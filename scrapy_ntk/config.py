@@ -64,6 +64,20 @@ class SettingsMaster:
         return self.parse_file(
             self.path_to_config_file(self.config_json_file_name))
 
+    def get_worksheet_id(self, spider_name: str) -> int:
+        """ Secure method to use with GSpread.
+        Returns only positive integers. """
+        worksheet = self.worksheet_number
+        take_from_dict = worksheet is None
+        if take_from_dict:
+            worksheet = self.spider_to_worksheet_dict[spider_name]
+        worksheet = int(worksheet)
+        if worksheet < 0:
+            raise RuntimeError(
+                f"Worksheet ID (number) must be positive for security reasons."
+                f" Value from {'JSON dictionary' if take_from_dict else 'CMD arguments'}: `{worksheet}`")
+        return worksheet
+
     def get_value(self, key: str,
                   args_only: bool =False,
                   json_only: bool =False,
@@ -154,17 +168,30 @@ class SettingsMaster:
 
     # complex
     @property
-    def spider_to_worksheet_dict(self) -> str:
+    def spider_to_worksheet_dict(self) -> dict:
         return self.get_value(
             'SPIDERS',
-            json_only=True, )
+            json_only=True,
+        )
+
+    @property
+    def worksheet_number(self) -> str:
+        return self.get_value(
+            'WORKSHEET_NUMBER',
+            args_only=True,
+            required=False,
+            default=None,
+        )
 
     # strings
     @property
     def spreadsheet_title(self) -> str:
         return self.get_value(
             'SPREADSHEET_TITLE',
-            json_only=True, )
+            json_only=False,
+            args_only=False,
+            required=True,
+        )
 
     @property
     def gspread_prefixfmt(self) -> str:

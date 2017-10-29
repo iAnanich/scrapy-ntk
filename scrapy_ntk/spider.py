@@ -188,7 +188,10 @@ class SingleSpider(BaseSpider):
         # reduce the traffic
         self._scraped_indexes = IndexesContainer(cloud.fetch_week_indexes())
         # log it
-        logger.info('Scraped indexes: {};'.format(self._scraped_indexes))
+        log_msg = 'Scraped indexes:'
+        for i in self._scraped_indexes:
+            log_msg += f'\n\t{i}'
+        logger.info(log_msg)
 
     # =================
     #  "parse" methods
