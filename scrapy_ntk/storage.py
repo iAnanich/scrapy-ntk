@@ -37,7 +37,7 @@ class GSpreadMaster:
 
     def get_worksheet_by_spider(self, spider: scrapy.spiders.Spider) -> gspread.Worksheet:
         try:
-            index = cfg.spider_to_worksheet_dict[spider.name]
+            index = cfg.get_worksheet_id(spider.name)
         except KeyError:
             raise RuntimeError('No worksheet configured for this spider: {}'.format(spider.name))
         try:
