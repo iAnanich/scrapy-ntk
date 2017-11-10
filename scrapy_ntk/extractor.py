@@ -1,4 +1,5 @@
 import logging
+import abc
 
 from scrapy.selector import SelectorList
 
@@ -21,36 +22,70 @@ LINK = 'link'
 NAMES = frozenset({TEXT, HEADER, TAGS, LINK})
 
 
-class Extractor:
+def _raise_not_implemented_attribute(name: str):
+    raise NotImplementedError(f"Please, implement attribute `{name}`.")
 
-    name = None
+
+class Extractor(abc.ABC):
+
+    name: str = None
 
     exception_template = '!!! {type}: {message} !!!'
+
+    def __init__(self):
+        self._fields_storage = {field: None for field in self.fields}
+        self._is_ready = False
 
     def _format_exception(self, exception: Exception):
         logger.exception(str(exception))
         return self.exception_template.format(
             type=type(exception), message=exception.args)
 
+    def _attr_checker(self, name, converter: type, default=None):
+        if hasattr(self, name):
+            return converter(getattr(self, name))
+        elif default is not None:
+            return default
+        else:
+            _raise_not_implemented_attribute(name)
+
+    def _save_result(self, result: str, field: str = None):
+        if field is None:
+            field = self.name
+        if field not in self.fields:
+            raise ValueError
+        self._fields_storage[field] = str(result)
+
+    @abc.abstractmethod
     def extract_from(self, obj: object) -> str:
-        """
-        Extracts data from given selector using initial arguments.
-        Must used from `spider.SingleSpider`.
-        :param selector: `SelectorList` object from what method selects and
-        extracts data.
-        :return: `str` object
-        """
-        raise NotImplementedError
+        pass
 
     def safe_extract_from(self, obj: object) -> str:
         try:
             string = self.extract_from(obj)
+            self._save_result(string)
+            self.ready = True
         except Exception as exc:
             string = self._format_exception(exc)
         return string
 
+    def get_dict(self):
+        return self._fields_storage.copy()
 
-class CSSExtractor(Extractor):
+    @property
+    def fields(self):
+        return self._attr_checker('_fields', set, {self.name})
+
+    @property
+    def ready(self):
+        return self._is_ready
+
+    @ready.setter
+    def ready(self, val: bool):
+        self._is_ready = bool(val)
+
+
+class CSSExtractor(Extractor, abc.ABC):
     """
     Extracts data from HTML using `scrapy.selector.SelectorList.css` method.
     It's more useful than old `ParseMixin` class implementation because
@@ -103,7 +138,7 @@ class CSSExtractor(Extractor):
         raise NotImplementedError
 
 
-class JoinableExtractor(CSSExtractor):
+class JoinableExtractor(CSSExtractor, abc.ABC):
 
     default = ''
     separator = ', '
@@ -125,21 +160,25 @@ class JoinableExtractor(CSSExtractor):
         return string
 
 
-class MultipleCSSExtractor(CSSExtractor):
+class MultipleCSSExtractor(CSSExtractor, abc.ABC):
 
     def __init__(self, list_of_string_css_selectors: list):
         for string_selector in list_of_string_css_selectors:
             self._check_string_selector(string_selector)
         self.list_of_string_selectors = list_of_string_css_selectors
 
+        super().__init__()
 
-class SingleCSSExtractor(CSSExtractor):
+
+class SingleCSSExtractor(CSSExtractor, abc.ABC):
 
     raise_on_missed = True
 
     def __init__(self, string_css_selector: str =None):
         self._check_string_selector(string_css_selector)
         self.string_selector = string_css_selector
+
+        super().__init__()
 
     def select_from(self, selector: SelectorList) -> SelectorList:
         selected = selector.css(self.string_selector)
@@ -154,7 +193,7 @@ class SingleCSSExtractor(CSSExtractor):
         return selected
 
 
-class GeneratorCSSExtractor(CSSExtractor):
+class GeneratorCSSExtractor(CSSExtractor, abc.ABC):
 
     def select_from(self, selector: SelectorList):
         """
@@ -202,22 +241,23 @@ class VoidExtractor(Extractor):
             raise RuntimeError('Wrong `name` passed: "{}"'.format(name))
         self.name = name
 
+        super().__init__()
+
     def extract_from(self, selector: SelectorList) -> str:
         return ''
 
+    _is_ready = True
+
 
 class GeneratorCSSVoidExtractor(GeneratorCSSExtractor, VoidExtractor):
-
-    def __init__(self, name: str):
-        if name not in NAMES:
-            raise RuntimeError('Wrong `name` passed: "{}"'.format(name))
-        self.name = name
 
     def select_from(self, selector: SelectorList):
         yield SelectorList()
 
     def extract_from(self, selector: SelectorList):
         yield ''
+
+    _is_ready = True
 
 
 # ===================
@@ -278,6 +318,8 @@ class TextExtractor(JoinableExtractor):
 
     separator = '\n'
 
+    _fields = {TEXT, ERRORS, MEDIA}
+
     def __init__(self, string_css_selector: str,
                  parser_class: type,
                  middlewares: list=None,
@@ -309,12 +351,14 @@ class TextExtractor(JoinableExtractor):
         self.media_counter_class = media_counter_class
         self.parser_class = parser_class
 
+        super().__init__()
+
     def select_from(self, selector: SelectorList):
         return self.middlewares.process(selector)
 
     def extract_from(self, selector: SelectorList) -> str:
         selected = self.select_from(selector)
-        elements = self.parse_selected(selected)
+        elements: list = self.parse_selected(selected)
         formatted = self.join(elements)
         return formatted
 
@@ -324,8 +368,12 @@ class TextExtractor(JoinableExtractor):
             media_counter_class=self.media_counter_class,
             elements_chain_class=self.elements_chain_class,
         )
-        for selector in selector_list:
+        for selector in iter(selector_list):
             parser.safe_parse(selector)
+
+        self._save_result(self.join(parser.errors_list), ERRORS)
+        self._save_result(parser.summary, MEDIA)
+
         return self._close_parser(parser)
 
     @staticmethod
@@ -355,6 +403,11 @@ class ExtractManager:
         self._check_type('text_extractor', text_extractor, TextExtractor)
         self._check_type('tags_extractor', tags_extractor, TagsExtractor)
 
+        self.item_extractors = frozenset([text_extractor, tags_extractor, header_extractor])
+        self._fields_dict = {k: None for k in self.fields}
+        self._item_names_dict = {e.name: False for e in self.item_extractors}
+        self._name_to_field_dict = {e.name: tuple(e.fields) for e in self.item_extractors}
+
     def _check_type(self, name: str, variable, parent: type):
         if isinstance(variable, VoidExtractor) or \
                 isinstance(variable, GeneratorCSSVoidExtractor):
@@ -365,3 +418,71 @@ class ExtractManager:
             raise TypeError('Passed `{}` variable must be `{}` type.'
                             .format(name, parent.__class__))
         self.__setattr__(name, variable)
+
+    def get_dict(self):
+        def raise_error():
+            raise ValueError('Not all extractors are ready yet.')
+        return {k: v if v is not None else raise_error()
+                for k, v in self._fields_dict.items()}
+
+    def extract(self, obj, name: str=None, field: str=None) -> dict:
+        if name is None and field is None:
+            raise ValueError('You must specify `name` or `field` argument.')
+        elif name is None and field is not None:
+            raise ValueError('You must pass in only one argument.')
+        elif name is not None:
+            extractor = self._get_extractor_by_name(name)
+            return_field = False
+        else:  # field is not None
+            extractor = self._get_extractor_by_field(field)
+            return_field = True
+        extractor.safe_extract_from(obj)
+        dictionary = extractor.get_dict()
+        self._save_result(dictionary,
+                          name=self._field_to_name(field) if return_field else name)
+        if return_field:
+            return {field: dictionary[field]}
+        else:
+            return dictionary
+
+    def extract_all(self, obj) -> dict:
+        for name in self.names:
+            self.extract(obj, name)
+        return self.get_dict()
+
+    def _get_extractor_by_name(self, name: str):
+        for extractor in self.item_extractors:
+            if extractor.name == name:
+                return extractor
+        else:
+            raise ValueError('No extractors with this name')
+
+    def _get_extractor_by_field(self, field: str):
+        for extractor in self.item_extractors:
+            if field in extractor.fields:
+                return extractor
+        else:
+            raise ValueError('No extractors with this name')
+
+    def _save_result(self, dictionary: dict, name: str):
+        if name not in self._item_names_dict.keys():
+            raise ValueError('No extractors with this name.')
+        self._fields_dict.update(dictionary)
+        self._item_names_dict[name] = True
+
+    def _field_to_name(self, field):
+        for name, fields in self._name_to_field_dict.items():
+            if field in fields:
+                return name
+        else:
+            raise ValueError('Can not find this field.')
+
+    @property
+    def fields(self):
+        for extractor in self.item_extractors:
+            for field in extractor.fields:
+                yield field
+
+    @property
+    def names(self):
+        yield from (e.name for e in self.item_extractors)

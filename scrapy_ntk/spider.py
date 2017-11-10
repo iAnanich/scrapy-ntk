@@ -16,6 +16,8 @@
 """
 
 import logging
+import abc
+
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 
@@ -61,13 +63,15 @@ class FingerprintsContainer(frozenset):
         return ', '.join(self)
 
 
-class BaseSpider(Spider):
+class BaseSpider(abc.ABC, Spider):
 
     _enable_proxy = False
     _proxy_mode = None
 
     _article_item_class = ArticleItem
     _default_fingerprint = LOCAL_EMPTY_FINGERPRINT
+
+    name: str = None
 
     def __init__(self, *args, **kwargs):
         # check proxy
@@ -109,11 +113,11 @@ class BaseSpider(Spider):
         return self._proxy_mode
 
 
-class SingleSpider(BaseSpider):
+class SingleSpider(BaseSpider, abc.ABC):
 
     # Just a spider name used by Scrapy to identify it.
     # Must be a string.
-    name = None
+    name: str = None
 
     # URL path to the "news-list page". Used for `start_urls` field.
     # Must be a string. Minimal value: ''
@@ -133,6 +137,8 @@ class SingleSpider(BaseSpider):
     _tags_extractor = None
     _text_extractor = None
 
+    _item_extractors = set()
+
     _extract_manager = None
 
     _use_proxy = False
@@ -142,7 +148,8 @@ class SingleSpider(BaseSpider):
         self.cloud = None
         self._scraped_fingerprints = frozenset()
         # call it to check
-        self.extract_manager
+        self.extract_manager = self.setup_extract_manager()
+        self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
@@ -173,23 +180,10 @@ class SingleSpider(BaseSpider):
         yield from self._yield_requests_from_response(response)
 
     def parse_article(self, response: Response):
-        """
-        "callback" for "article page" that yields `ArticleItem` items.
-        :param response: `Scrapy.http.Response` instance from "article page"
-        :return: yields `ArticleItem` instance
-        """
         logger.info('Started extracting from {}'.format(response.url))
-        order = [
-            ('text', self._text_extractor),
-            ('header', self._header_extractor),
-            ('tags', self._tags_extractor),
-        ]
-        kwargs = {}
-        for name, extractor in order:
-            extracted = extractor.safe_extract_from(response)
-            kwargs[name] = extracted
         # produce item
-        yield from self._yield_article_item(response, **kwargs)
+        yield from self._yield_article_item(
+            response, **self.extract_manager.extract_all(response))
 
     # ============
     #  generators
@@ -242,10 +236,12 @@ class SingleSpider(BaseSpider):
         meta = self._default_request_meta.copy()
         return meta
 
-    @property
-    def extract_manager(self):
-        extractors = [self._text_extractor, self._tags_extractor,
-                self._header_extractor, self._link_extractor]
+    def setup_extract_manager(self) -> ExtractManager:
+        extractors = [
+            self._text_extractor,
+            self._tags_extractor,
+            self._header_extractor,
+            self._link_extractor, ]
         if isinstance(self._extract_manager, ExtractManager):
             return self._extract_manager
         elif all(extractors):
@@ -283,7 +279,7 @@ class SingleSpider(BaseSpider):
                                       .format(field_name))
 
 
-class TestingSpider(BaseSpider):
+class TestingSpider(BaseSpider, abc.ABC):
     def parse(self, response: Response):
         yield from self._yield_article_item(
             response, **{
@@ -295,11 +291,13 @@ class TestingSpider(BaseSpider):
         })
 
 
-class WorkerSpider(Spider):
+class WorkerSpider(Spider, abc.ABC):
 
     _dummy_request_url = 'http://httpbin.org/anything'
 
     _setup_methods = None
+
+    name: str = None
 
     def __init__(self, *args, **kwargs):
 
@@ -335,6 +333,7 @@ class WorkerSpider(Spider):
         """ Make dummy request. """
         yield Request(self._dummy_request_url, callback=self.dont_parse)
 
+    @abc.abstractmethod
     def dont_parse(self, _):
         """ Do what you want here. """
-        raise NotImplementedError
+        pass
