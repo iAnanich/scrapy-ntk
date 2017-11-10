@@ -17,15 +17,9 @@ FINGERPRINT = 'fingerprint'
 DATE = 'date'
 ERRORS = 'errors'
 
+FIELDS = frozenset([URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS])
 
-class ArticleItem(Item):
-    header = Field()
-    tags = Field()
-    url = Field()
-    text = Field()
-    media = Field()
+ITEM_CLASS_NAME = 'ArticleItem'
 
-    # non-public fields
-    fingerprint = Field()
-    date = Field()
-    errors = Field()
+
+ArticleItem = type(ITEM_CLASS_NAME, (Item, ), {f: Field() for f in FIELDS})

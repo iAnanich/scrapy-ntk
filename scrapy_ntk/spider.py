@@ -10,8 +10,8 @@
     * article page - page on the same web-site that have HTML tag (e. g.
     "article tag") with childes that have all needed data as header, tags etc.
     * article tag - HTML tag  with childes that have all data for scraping
-    * fingerprint - part of the article page URL that can be used to identify the
-    article page to not scrape it twice
+    * fingerprint - part of the article page URL that can be used to identify
+    the article page to not scrape it twice
     * callback - method which takes request and yields another request or item
 """
 
@@ -158,7 +158,8 @@ class SingleSpider(BaseSpider, abc.ABC):
         # use `frozenset` here because we will iterate over
         # `self._scraped_fingerprints` many times and iterating right now might
         # reduce the traffic
-        self._scraped_fingerprints = FingerprintsContainer(cloud.fetch_week_fingerprints())
+        self._scraped_fingerprints = FingerprintsContainer(
+            cloud.fetch_week_fingerprints())
         # log it
         log_msg = 'Scraped fingerprints:'
         for i in self._scraped_fingerprints:
@@ -283,12 +284,13 @@ class TestingSpider(BaseSpider, abc.ABC):
     def parse(self, response: Response):
         yield from self._yield_article_item(
             response, **{
-            TAGS: '--',
-            TEXT: 'Testing where and how spider exports data.',
-            HEADER: '-',
-            ERRORS: '----',
-            MEDIA: '---'
-        })
+                TAGS: '--',
+                TEXT: 'Testing where and how spider exports data.',
+                HEADER: '-',
+                ERRORS: '----',
+                MEDIA: '---',
+            }
+        )
 
 
 class WorkerSpider(Spider, abc.ABC):
@@ -331,9 +333,9 @@ class WorkerSpider(Spider, abc.ABC):
 
     def start_requests(self):
         """ Make dummy request. """
-        yield Request(self._dummy_request_url, callback=self.dont_parse)
+        yield Request(self._dummy_request_url, callback=self.do_not_parse)
 
     @abc.abstractmethod
-    def dont_parse(self, _):
+    def do_not_parse(self, _):
         """ Do what you want here. """
         pass

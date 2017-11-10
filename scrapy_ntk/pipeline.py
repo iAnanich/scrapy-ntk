@@ -19,7 +19,7 @@ def _to_boolean(option: str) -> bool:
 
 
 def is_any_instance(obj, *types):
-    return any(isinstance(obj, type) for type in types)
+    return any(isinstance(obj, type_) for type_ in types)
 
 
 ENABLE_GSPREAD = _to_boolean(cfg.enable_gspread)

@@ -4,7 +4,7 @@ import abc
 from scrapy.selector import SelectorList
 
 from .parser import ESCAPE_CHAR_PAIRS, Parser, MediaCounter, ElementsChain
-from .middleware import HTMLMiddleware, MiddlewaresContainer, select
+from .middleware import HTMLMiddleware, MiddlewareContainer, select
 from .item import (
     ERRORS,
     MEDIA,
@@ -20,10 +20,6 @@ logger = logging.getLogger(__name__)
 # names
 LINK = 'link'
 NAMES = frozenset({TEXT, HEADER, TAGS, LINK})
-
-
-def _raise_not_implemented_attribute(name: str):
-    raise NotImplementedError(f"Please, implement attribute `{name}`.")
 
 
 class Extractor(abc.ABC):
@@ -47,7 +43,7 @@ class Extractor(abc.ABC):
         elif default is not None:
             return default
         else:
-            _raise_not_implemented_attribute(name)
+            raise NotImplementedError(f"Please, implement attribute `{name}`.")
 
     def _save_result(self, result: str, field: str = None):
         if field is None:
@@ -101,7 +97,7 @@ class CSSExtractor(Extractor, abc.ABC):
         Checks if given `string_selector` ends with strings defined in
         `allowed_ends` class field.
         :param string_selector: string CSS selector
-        :exception ValueErrir: raises if non of strings in `self.allowed_ends`
+        :exception ValueError: raises if non of strings in `self.allowed_ends`
         list are at the end of given `string_selector` string
         :return: None
         """
@@ -185,7 +181,6 @@ class SingleCSSExtractor(CSSExtractor, abc.ABC):
         if not selected:
             msg = 'Not found any "{}" containers.'.format(self.name)
             if self.raise_on_missed:
-                #logger.error(msg)
                 raise RuntimeError(msg)
             else:
                 logger.warning(msg)
@@ -219,12 +214,6 @@ class GeneratorCSSExtractor(CSSExtractor, abc.ABC):
                     '`{}` selector failed'.format(string_selector))
 
     def extract_from(self, selector: SelectorList):
-        """
-        Expects to be called from `spider.SingleSpider._yield_requests_from_response`
-        method.
-        :param selector: `SelectorList` object (HTML)
-        :return: generator of `str` objects
-        """
         for selected in self.select_from(selector):
             yield self._format(selected.extract())
 
@@ -322,9 +311,9 @@ class TextExtractor(JoinableExtractor):
 
     def __init__(self, string_css_selector: str,
                  parser_class: type,
-                 middlewares: list=None,
+                 middleware_list: list=None,
                  media_counter_class: type=None,
-                 elements_chain_class: type=None,):
+                 elements_chain_class: type=None, ):
         self.string_selector = string_css_selector
 
         # Parser stuff
@@ -341,12 +330,12 @@ class TextExtractor(JoinableExtractor):
         if not isinstance(media_counter_class(), MediaCounter):
             raise RuntimeError('Given `media_counter` is not inherited from '
                                '`parser.MediaCounter` class.')
-        self.middlewares = MiddlewaresContainer([
+        self.middleware_container = MiddlewareContainer([
             HTMLMiddleware(select, args=(string_css_selector,), )
         ])
-        if middlewares:
-            for middleware in middlewares:
-                    self.middlewares.append(middleware)
+        if middleware_list:
+            for middleware in middleware_list:
+                    self.middleware_container.append(middleware)
         self.elements_chain_class = elements_chain_class
         self.media_counter_class = media_counter_class
         self.parser_class = parser_class
@@ -354,7 +343,7 @@ class TextExtractor(JoinableExtractor):
         super().__init__()
 
     def select_from(self, selector: SelectorList):
-        return self.middlewares.process(selector)
+        return self.middleware_container.process(selector)
 
     def extract_from(self, selector: SelectorList) -> str:
         selected = self.select_from(selector)
@@ -389,9 +378,9 @@ class TextExtractor(JoinableExtractor):
         return parser.close()
 
 
-# ===========
-#  managment
-# ===========
+# ============
+#  management
+# ============
 class ExtractManager:
 
     def __init__(self, link_extractor: LinkExtractor =None,
@@ -403,10 +392,15 @@ class ExtractManager:
         self._check_type('text_extractor', text_extractor, TextExtractor)
         self._check_type('tags_extractor', tags_extractor, TagsExtractor)
 
-        self.item_extractors = frozenset([text_extractor, tags_extractor, header_extractor])
+        self.item_extractors = frozenset([
+            text_extractor,
+            tags_extractor,
+            header_extractor
+        ])
         self._fields_dict = {k: None for k in self.fields}
         self._item_names_dict = {e.name: False for e in self.item_extractors}
-        self._name_to_field_dict = {e.name: tuple(e.fields) for e in self.item_extractors}
+        self._name_to_field_dict = {e.name: tuple(e.fields)
+                                    for e in self.item_extractors}
 
     def _check_type(self, name: str, variable, parent: type):
         if isinstance(variable, VoidExtractor) or \
@@ -438,8 +432,9 @@ class ExtractManager:
             return_field = True
         extractor.safe_extract_from(obj)
         dictionary = extractor.get_dict()
-        self._save_result(dictionary,
-                          name=self._field_to_name(field) if return_field else name)
+        self._save_result(
+            dictionary,
+            name=self._field_to_name(field) if return_field else name)
         if return_field:
             return {field: dictionary[field]}
         else:
