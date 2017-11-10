@@ -2,6 +2,11 @@ import json
 import os
 import sys
 
+from .item import (
+    FIELDS,
+    URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
+)
+
 WEBRANDOMPROXY_URL = 'https://proxy-spider.com/api/proxies.example.txt'
 JOBKEY_DEFAULT = '0/0/0'
 
@@ -83,6 +88,8 @@ class SettingsMaster:
                   json_only: bool =False,
                   required: bool =True,
                   default=None):
+        if not self.is_configured:
+            raise RuntimeError('Do not use SettingsMaster\'s properties in class fields.')
         try:
             from_args = self._args_dict[key]
         except KeyError:
@@ -173,6 +180,22 @@ class SettingsMaster:
             'SPIDERS',
             json_only=True,
         )
+
+    @property
+    def columns(self) -> tuple:
+        obj = self.get_value(
+            'COLUMNS',
+            json_only=True,
+            required=False,
+            default=[URL, HEADER, TAGS, TEXT, DATE, FINGERPRINT],
+        )
+        if isinstance(obj, list):
+            for i in obj:
+                if i not in FIELDS:
+                    raise ValueError(f'{i} field is not supported.')
+            return tuple(obj)
+        else:
+            raise TypeError
 
     @property
     def worksheet_number(self) -> str:

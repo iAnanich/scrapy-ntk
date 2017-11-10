@@ -7,17 +7,11 @@ from oauth2client.service_account import \
     ServiceAccountCredentials as Credentials
 
 from . import config
-from .item import (
-    ArticleItem, FIELDS,
-    URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
-)
+from .item import ArticleItem, DATE
 
 cfg = config.cfg
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-COLUMNS_TUPLE = (URL, HEADER, TAGS, TEXT, DATE, FINGERPRINT)
 
 
 class GSpreadMaster:
@@ -59,10 +53,11 @@ class GSpreadMaster:
 class GSpreadRow:
     """ Place to configure fields order in a table"""
 
-    columns_order = COLUMNS_TUPLE
     empty_cell = '- - -'
 
     def __init__(self, item: ArticleItem or dict = None, **fields):
+        self.columns_order = cfg.columns
+
         if item is not None:
             self.item_dict = dict(item)
         else:
@@ -70,7 +65,7 @@ class GSpreadRow:
 
         for k in self.item_dict:
             if k not in self.columns_order:
-                raise KeyError
+                logger.warning(f'`{k} is not supported for exporting into Google Sheet.')
 
         self.serialized = self.serialize(self.item_dict)
 
