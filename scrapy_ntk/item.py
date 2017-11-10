@@ -12,8 +12,10 @@ HEADER = 'header'
 TAGS = 'tags'
 URL = 'url'
 TEXT = 'text'
-INDEX = 'index'
+MEDIA = 'media'
+FINGERPRINT = 'fingerprint'
 DATE = 'date'
+ERRORS = 'errors'
 
 
 class ArticleItem(Item):
@@ -21,7 +23,9 @@ class ArticleItem(Item):
     tags = Field()
     url = Field()
     text = Field()
+    media = Field()
 
     # non-public fields
-    index = Field()
+    fingerprint = Field()
     date = Field()
+    errors = Field()

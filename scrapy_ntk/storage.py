@@ -8,7 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials as Creds
 from . import config
 from .item import (
     ArticleItem,
-    URL, INDEX, TEXT, TAGS, DATE, HEADER,
+    URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
 
 cfg = config.cfg
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-COLUMNS_TUPLE = (URL, HEADER, TAGS, TEXT, DATE, INDEX)
+COLUMNS_TUPLE = (URL, HEADER, TAGS, TEXT, DATE, FINGERPRINT)
 
 
 class GSpreadMaster:

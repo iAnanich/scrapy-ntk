@@ -4,15 +4,19 @@ from scrapy.selector import SelectorList
 
 from .parser import ESCAPE_CHAR_PAIRS, Parser, MediaCounter, ElementsChain
 from .middleware import HTMLMiddleware, MiddlewaresContainer, select
+from .item import (
+    ERRORS,
+    MEDIA,
+    TAGS,
+    TEXT,
+    HEADER,
+)
 
 
 logger = logging.getLogger(__name__)
 
 
 # names
-TEXT = 'text'
-HEADER = 'header'
-TAGS = 'tags'
 LINK = 'link'
 NAMES = frozenset({TEXT, HEADER, TAGS, LINK})
 
@@ -219,15 +223,15 @@ class GeneratorCSSVoidExtractor(GeneratorCSSExtractor, VoidExtractor):
 # ===================
 #  actual extractors
 # ===================
-VOID_TAGS = VoidExtractor('tags')
-VOID_TEXT = VoidExtractor('text')
-VOID_HEADER = VoidExtractor('header')
-VOID_LINK = GeneratorCSSVoidExtractor('link')
+VOID_TAGS = VoidExtractor(TAGS)
+VOID_TEXT = VoidExtractor(TEXT)
+VOID_HEADER = VoidExtractor(HEADER)
+VOID_LINK = GeneratorCSSVoidExtractor(LINK)
 
 
 class LinkExtractor(MultipleCSSExtractor, GeneratorCSSExtractor):
 
-    name = 'link'
+    name = LINK
 
     replace_with = []
     allowed_ends = ['a::attr(href)']
@@ -235,7 +239,7 @@ class LinkExtractor(MultipleCSSExtractor, GeneratorCSSExtractor):
 
 class HeaderExtractor(SingleCSSExtractor):
 
-    name = 'header'
+    name = HEADER
 
     allowed_ends = ['::text']
 
@@ -258,7 +262,7 @@ class HeaderExtractor(SingleCSSExtractor):
 
 class TagsExtractor(SingleCSSExtractor, JoinableExtractor):
 
-    name = 'tag'
+    name = TAGS
     allowed_ends = ['::text']
     raise_on_missed = False
 
@@ -270,7 +274,7 @@ class TagsExtractor(SingleCSSExtractor, JoinableExtractor):
 
 class TextExtractor(JoinableExtractor):
 
-    name = 'text'
+    name = TEXT
 
     separator = '\n'
 
