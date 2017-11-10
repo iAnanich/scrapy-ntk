@@ -12,16 +12,14 @@ HEADER = 'header'
 TAGS = 'tags'
 URL = 'url'
 TEXT = 'text'
-INDEX = 'index'
+MEDIA = 'media'
+FINGERPRINT = 'fingerprint'
 DATE = 'date'
+ERRORS = 'errors'
+
+FIELDS = frozenset([URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS])
+
+ITEM_CLASS_NAME = 'ArticleItem'
 
 
-class ArticleItem(Item):
-    header = Field()
-    tags = Field()
-    url = Field()
-    text = Field()
-
-    # non-public fields
-    index = Field()
-    date = Field()
+ArticleItem = type(ITEM_CLASS_NAME, (Item, ), {f: Field() for f in FIELDS})

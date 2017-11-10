@@ -95,6 +95,7 @@ class RandomWebProxy(_RandomProxy):
     def _parse(cls, text):
         yield from text.split('\n')
 
+
 # =========
 #   modes
 # =========

@@ -239,14 +239,14 @@ class SHubInterface(SHub):
         for job in self._fetch_week_jobs(spider=spider):
             yield from job.items.iter()
 
-    def fetch_week_indexes(self):
+    def fetch_week_fingerprints(self):
         """
-        Generates `str` objects that are in the "index" field of items fetched
-        in `_fetch_week_job` method.
+        Generates `str` objects that are in the "fingerprint" field of items
+        fetched in `_fetch_week_job` method.
         :return: generator of `str` objects
         """
         for item in self.fetch_week_items():
-            yield item['index']
+            yield item['fingerprint']
 
     def fetch_all_week_items(self):
         spiders = self.project.spiders

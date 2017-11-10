@@ -12,13 +12,15 @@ class Middleware:
     _output_type = None
     _input_type = None
 
-    def __init__(self, function, args: tuple =(), kwargs: dict ={},
+    def __init__(self, func, args: tuple =(), kwargs: dict =None,
                  input_type: type =None, output_type: type =None):
+        if kwargs is None:
+            kwargs = dict()
         if not isinstance(args, tuple):
             raise TypeError('Given `args` are not `tuple` object.')
         if not isinstance(kwargs, dict):
             raise TypeError('Given `kwargs` are not `dict` object.')
-        self.function = function
+        self.function = func
         self.args = args
         self.kwargs = kwargs
         if not input_type:
@@ -55,14 +57,14 @@ class Middleware:
                 action=action, actual=type(value), expected=expected_type))
 
 
-class MiddlewaresContainer(list):
+class MiddlewareContainer(list):
 
     _items_type = 'middleware.Middleware'
 
-    def __init__(self, middlewares: list):
-        for middleware in middlewares:
+    def __init__(self, middleware_list: list):
+        for middleware in middleware_list:
             self._check_type(middleware)
-        super().__init__(middlewares)
+        super().__init__(middleware_list)
 
     def process(self, value):
         for middleware in self:
@@ -70,19 +72,21 @@ class MiddlewaresContainer(list):
         else:
             return value
 
-    def _check_type(self, object):
-        if not isinstance(object, Middleware):
+    def _check_type(self, obj):
+        if not isinstance(obj, Middleware):
             raise TypeError('is not `{}` object.'.format(self._items_type))
 
-    def append(self, object):
-        self._check_type(object)
-        super().append(object)
+    def append(self, obj):
+        self._check_type(obj)
+        super().append(obj)
 
 
 class SelectMiddleware(Middleware):
 
     _input_type = SelectorList
     _output_type = SelectorList
+
+
 SMW = SelectMiddleware
 
 
@@ -93,7 +97,7 @@ class HTMLMiddleware(Middleware):
 
 
 # ====================
-#  actual middlewares
+#  actual middleware
 # ====================
 def select(selector: SelectorList, string_selector: str) -> SelectorList:
     return selector.css(string_selector)

@@ -16,7 +16,8 @@ class ProxyManagerDM:
     @classmethod
     def from_crawler(cls, crawler):
         new = cls()
-        crawler.signals.connect(new.spider_opened, signal=signals.spider_opened)
+        crawler.signals.connect(
+            new.spider_opened, signal=signals.spider_opened)
         return new
 
     def spider_opened(self, spider: BaseSpider):

@@ -10,12 +10,14 @@
     * article page - page on the same web-site that have HTML tag (e. g.
     "article tag") with childes that have all needed data as header, tags etc.
     * article tag - HTML tag  with childes that have all data for scraping
-    * index - part of the article page URL that can be used to identify the
-    article page to not scrape it twice
+    * fingerprint - part of the article page URL that can be used to identify
+    the article page to not scrape it twice
     * callback - method which takes request and yields another request or item
 """
 
 import logging
+import abc
+
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 
@@ -27,13 +29,13 @@ from .config import cfg
 from .extractor import ExtractManager
 from .item import (
     ArticleItem,
-    URL, INDEX, TAGS, TEXT, HEADER, DATE,
+    URL, FINGERPRINT, TAGS, TEXT, HEADER, DATE, MEDIA, ERRORS
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-LOCAL_EMPTY_INDEX = 'LocalEmptyIndex'
+LOCAL_EMPTY_FINGERPRINT = 'LocalEmptyFingerprint'
 
 
 def _to_bool(string: str) -> bool:
@@ -45,29 +47,31 @@ def _to_bool(string: str) -> bool:
         raise ValueError('Unknown string value: ' + string)
 
 
-def _get_item(lst: list, index: int, default=None):
+def _get_item(lst: list, fingerprint: int, default=None):
     try:
-        return lst[index]
+        return lst[fingerprint]
     except IndexError:
         return default
 
 
-class IndexesContainer(frozenset):
+class FingerprintsContainer(frozenset):
 
     def __repr__(self):
-        return '<Indexes: {}>'.format(self)
+        return '<Fingerprints: {}>'.format(self)
 
     def __str__(self):
         return ', '.join(self)
 
 
-class BaseSpider(Spider):
+class BaseSpider(abc.ABC, Spider):
 
     _enable_proxy = False
     _proxy_mode = None
 
     _article_item_class = ArticleItem
-    _default_index = LOCAL_EMPTY_INDEX
+    _default_fingerprint = LOCAL_EMPTY_FINGERPRINT
+
+    name: str = None
 
     def __init__(self, *args, **kwargs):
         # check proxy
@@ -82,20 +86,20 @@ class BaseSpider(Spider):
 
     def _yield_article_item(self, response: Response, **kwargs):
         """
-        Yields `ArticleItem` instances with `url` and `index` arguments
+        Yields `ArticleItem` instances with `url` and `fingerprint` arguments
         extracted from given `response` object.
         :param response: `scrapy.http.Response` from "article page"
         :param kwargs: fields for `ArticleItem`
         :return: yields `ArticleItem` instance
         """
         try:
-            index = response.meta['index']
+            fingerprint = response.meta['fingerprint']
         except KeyError:
             # case when used with `crawl` command
-            index = self._default_index
+            fingerprint = self._default_fingerprint
         kwargs.update({
             URL: response.url,
-            INDEX: index,
+            FINGERPRINT: fingerprint,
             DATE: datetime.now()
         })
         yield self._article_item_class(**kwargs)
@@ -109,38 +113,11 @@ class BaseSpider(Spider):
         return self._proxy_mode
 
 
-class SingleSpider(BaseSpider):
-    """
-    This class must not be used properly, only for inheritance.
-
-    It implements Scrapy spider callbacks for scraping articles from news-like
-    web-site, without duplicates (see `fetch_scraped_indexes` function in the
-    `tools` module.)
-
-    What must be implemented for usage?
-    * class fields: `name`, `_start_path`, `_start_domain`, `_scheme`
-    * methods: `_convert_path_to_index`
-
-    How it works at all:
-    1. first request is to `start_urls`'s first (and only) URL, that depends
-    on `_start_path` and `_start_domain` and `_scheme` class fields.
-    2. `parse` callback spider calls `fetch_scraped_indexes` to get
-    list of scraped yet articles and stores it
-    3. then `_yield_requests_from_response` extracts links to "article pages"
-    from response by calling `_find_news_list_in_response` to locate the
-    "news-list tag" and `_extract_ul_or_path` to get URL or path to an
-    "article page" that passes to `_yield_request` method
-    4. `_yield_request` method parses given `url_or_path` argument to yield
-    request to "article page" with `parse_article` callback
-    5. `parse_article` finds `article` selector and passes extracted header,
-    tags etc. to `_yield_article_item` method
-    6. `_yield_article_item` method ads to item arguments that can be
-    extracted just from response.
-    """
+class SingleSpider(BaseSpider, abc.ABC):
 
     # Just a spider name used by Scrapy to identify it.
     # Must be a string.
-    name = None
+    name: str = None
 
     # URL path to the "news-list page". Used for `start_urls` field.
     # Must be a string. Minimal value: ''
@@ -160,6 +137,8 @@ class SingleSpider(BaseSpider):
     _tags_extractor = None
     _text_extractor = None
 
+    _item_extractors = set()
+
     _extract_manager = None
 
     _use_proxy = False
@@ -167,29 +146,23 @@ class SingleSpider(BaseSpider):
 
     def __init__(self, *args, **kwargs):
         self.cloud = None
-        self._scraped_indexes = frozenset()
+        self._scraped_fingerprints = frozenset()
         # call it to check
-        self.extract_manager
+        self.extract_manager = self.setup_extract_manager()
+        self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
     def connect_cloud(self, cloud: SHubInterface):
-        """
-        binds `cloud` argument as `cloud` attribute and calls it's
-        `fetch_week_indexes` method to store the result as list in
-        `_scraped_indexes` attribute to use it the future for filtering
-        duplicates.
-        :param cloud: instance of `cloud.CloudInterface`
-        :return: None
-        """
         self.cloud = cloud
         # use `frozenset` here because we will iterate over
-        # `self._scraped_indexes` many times and iterating right now might
+        # `self._scraped_fingerprints` many times and iterating right now might
         # reduce the traffic
-        self._scraped_indexes = IndexesContainer(cloud.fetch_week_indexes())
+        self._scraped_fingerprints = FingerprintsContainer(
+            cloud.fetch_week_fingerprints())
         # log it
-        log_msg = 'Scraped indexes:'
-        for i in self._scraped_indexes:
+        log_msg = 'Scraped fingerprints:'
+        for i in self._scraped_fingerprints:
             log_msg += f'\n\t{i}'
         logger.info(log_msg)
 
@@ -208,38 +181,16 @@ class SingleSpider(BaseSpider):
         yield from self._yield_requests_from_response(response)
 
     def parse_article(self, response: Response):
-        """
-        "callback" for "article page" that yields `ArticleItem` items.
-        :param response: `Scrapy.http.Response` instance from "article page"
-        :return: yields `ArticleItem` instance
-        """
         logger.info('Started extracting from {}'.format(response.url))
-        order = [
-            ('text', self._text_extractor),
-            ('header', self._header_extractor),
-            ('tags', self._tags_extractor),
-        ]
-        kwargs = {}
-        for name, extractor in order:
-            extracted = extractor.safe_extract_from(response)
-            kwargs[name] = extracted
         # produce item
-        yield from self._yield_article_item(response, **kwargs)
+        yield from self._yield_article_item(
+            response, **self.extract_manager.extract_all(response))
 
     # ============
     #  generators
     # ============
     # these methods are used to yield requests of items
     def _yield_request(self, path_or_url: str):
-        """
-        Yields `scrapy.http.Request` with `parse_article` "callback" and meta
-        "index" if "index" wasn't scraped yet. Method checks if passed
-        `path_or_url` argument is an URL or URL path, but in both cases method
-        know both URL and path, because URL is required to instantiate request
-        and path is required to extract "index" from it.
-        :param path_or_url: URL itself or URL path
-        :return: yields `scrapy.http.Request` with `parse_article` "callback"
-        """
         if '://' in path_or_url:
             url = path_or_url
             path = urlparse(url)[2]
@@ -247,10 +198,10 @@ class SingleSpider(BaseSpider):
             path = path_or_url
             url = urlunparse([self._scheme, self._start_domain, path,
                               None, None, None])
-        index = self._convert_path_to_index(path)
-        if index not in self._scraped_indexes:
+        fingerprint = self._convert_path_to_fingerprint(path)
+        if fingerprint not in self._scraped_fingerprints:
             meta = self.request_meta
-            meta.update({'index': index})
+            meta.update({FINGERPRINT: fingerprint})
             yield Request(url=url,
                           callback=self.parse_article,
                           meta=meta)
@@ -286,10 +237,12 @@ class SingleSpider(BaseSpider):
         meta = self._default_request_meta.copy()
         return meta
 
-    @property
-    def extract_manager(self):
-        extractors = [self._text_extractor, self._tags_extractor,
-                self._header_extractor, self._link_extractor]
+    def setup_extract_manager(self) -> ExtractManager:
+        extractors = [
+            self._text_extractor,
+            self._tags_extractor,
+            self._header_extractor,
+            self._link_extractor, ]
         if isinstance(self._extract_manager, ExtractManager):
             return self._extract_manager
         elif all(extractors):
@@ -307,13 +260,7 @@ class SingleSpider(BaseSpider):
     #  helpers
     # =========
 
-    def _convert_path_to_index(self, path: str) -> str:
-        """
-        Extracts "index" (see entities in the `TemplateSpider` class'
-        docstring) from given URL path.
-        :param path: URL path string
-        :return: `index` string
-        """
+    def _convert_path_to_fingerprint(self, path: str) -> str:
         raise NotImplementedError
 
     def _check_field_implementation(self, field_name: str):
@@ -333,21 +280,26 @@ class SingleSpider(BaseSpider):
                                       .format(field_name))
 
 
-class TestingSpider(BaseSpider):
+class TestingSpider(BaseSpider, abc.ABC):
     def parse(self, response: Response):
         yield from self._yield_article_item(
             response, **{
-            TAGS: '-',
-            TEXT: 'Testing where and how spider exports data.',
-            HEADER: 'test',
-        })
+                TAGS: '--',
+                TEXT: 'Testing where and how spider exports data.',
+                HEADER: '-',
+                ERRORS: '----',
+                MEDIA: '---',
+            }
+        )
 
 
-class WorkerSpider(Spider):
+class WorkerSpider(Spider, abc.ABC):
 
     _dummy_request_url = 'http://httpbin.org/anything'
 
     _setup_methods = None
+
+    name: str = None
 
     def __init__(self, *args, **kwargs):
 
@@ -381,8 +333,9 @@ class WorkerSpider(Spider):
 
     def start_requests(self):
         """ Make dummy request. """
-        yield Request(self._dummy_request_url, callback=self.dont_parse)
+        yield Request(self._dummy_request_url, callback=self.do_not_parse)
 
-    def dont_parse(self, _):
+    @abc.abstractmethod
+    def do_not_parse(self, _):
         """ Do what you want here. """
-        raise NotImplementedError
+        pass
