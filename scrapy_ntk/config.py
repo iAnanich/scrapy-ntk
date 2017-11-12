@@ -217,6 +217,16 @@ class SettingsMaster:
         )
 
     @property
+    def backup_spreadsheet_title(self) -> str:
+        return self.get_value(
+            'BACKUP_SPREADSHEET_TITLE',
+            json_only=False,
+            args_only=False,
+            required=False,
+            default=None
+        )
+
+    @property
     def gspread_prefixfmt(self) -> str:
         return self.get_value(
             'GSPREAD_PREFIXFMT',

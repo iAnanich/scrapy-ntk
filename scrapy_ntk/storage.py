@@ -18,38 +18,57 @@ logger.setLevel(logging.DEBUG)
 
 class GSpreadMaster:
 
-    _secret_file_name = 'client-secret.json'  # library_depend
-
     def __init__(self):
         self._credentials = self._get_credentials()
         self._client = self._get_client()
         self.spreadsheet = self._client.open(cfg.spreadsheet_title)
+        self.backup_spreadsheet = None
 
-    def _get_credentials(self) -> Credentials:
+        backup_spreadsheet_title = cfg.backup_spreadsheet_title
+        if backup_spreadsheet_title is not None:
+            self.backup_spreadsheet = self._client.open(backup_spreadsheet_title)
+
+    @staticmethod
+    def _get_credentials() -> Credentials:
         return Credentials.from_json_keyfile_name(
             cfg.client_secret_path, ['https://spreadsheets.google.com/feeds'])
 
-    def _get_client(self) -> gspread.Client:
-        return gspread.authorize(self._credentials)
-
-    def get_worksheet_by_spider(self, spider: scrapy.spiders.Spider) \
-            -> gspread.Worksheet:
+    @staticmethod
+    def _get_index(spider):
         try:
-            index = cfg.get_worksheet_id(spider.name)
+            return cfg.get_worksheet_id(spider.name)
         except KeyError:
             raise RuntimeError(
                 f'No worksheet configured for this spider: {spider.name}')
+
+    @classmethod
+    def _get_worksheet(cls, spider, spreadsheet: gspread.Spreadsheet =None):
+        if spreadsheet is None:
+            return None
+
+        index = cls._get_index(spider)
         try:
-            worksheet = self.spreadsheet.get_worksheet(index)
+            worksheet = spreadsheet.get_worksheet(index)
             assert worksheet is not None
         except AssertionError:
             raise RuntimeError(
                 f'No worksheet exist for this spider: {spider.name}/{index}')
         return worksheet
 
+    def _get_client(self) -> gspread.Client:
+        return gspread.authorize(self._credentials)
+
+    def get_worksheet_by_spider(self, spider: scrapy.spiders.Spider) \
+            -> gspread.Worksheet:
+        return self._get_worksheet(spider, self.spreadsheet)
+
+    def get_backup_worksheet_by_spider(self, spider: scrapy.spiders.Spider) \
+            -> gspread.Worksheet:
+        return self._get_worksheet(spider, self.backup_spreadsheet)
+
     @property
     def secret_file_name(self):
-        return self._secret_file_name
+        return 'client-secret.json'  # library_depend
 
 
 class Row(abc.ABC):

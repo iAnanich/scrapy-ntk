@@ -128,14 +128,16 @@ class GSpreadItemExporter(BaseItemExporter):
 
     # logging methods
     def _log_config(self):
-        logger.info(
+        msg = str(
             f'GSpread exporting configuration ::\n'
             f'\tspider = "{self._spider.name}" (id= {cfg.current_spider_id})\n'
             f'\tspreadsheet = "{self._worksheet.spreadsheet.title}"\n'
-            f'\tworksheet = "{self._worksheet.title}" #{self._worksheet.id}\n'
-            f'\tbackup spreadsheet = "{self._backup_worksheet.spreadsheet.title}"\n'
-            f'\tbackup worksheet = "{self._backup_worksheet.title}" #{self._backup_worksheet.id}'
-        )
+            f'\tworksheet = "{self._worksheet.title}"')
+        if self._backup_worksheet is not None:
+            msg += f'\tbackup spreadsheet = ' \
+                   f'"{self._backup_worksheet.spreadsheet.title}"\n' \
+                   f'\tbackup worksheet = "{self._backup_worksheet.title}"'
+        logger.info(msg)
 
     def __repr__(self):
         return '<{name} "{status}" items: {i}>'.format(
