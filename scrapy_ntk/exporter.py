@@ -2,10 +2,11 @@ import logging
 from datetime import datetime
 
 from scrapy.exporters import BaseItemExporter
+from gspread import Worksheet
 
 from .config import cfg
 from .item import ArticleItem
-from .storage import GSpreadRow
+from .storage import GSpreadWriter, BackupGSpreadWriter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -35,23 +36,27 @@ class GSpreadItemExporter(BaseItemExporter):
 
     def __init__(self, **kwargs):
         self._spider = kwargs.pop('spider')
-        self._worksheet = kwargs.pop('worksheet')
-        self._job_url = None
+        self._worksheet: Worksheet = kwargs.pop('worksheet')
+        self._writer: GSpreadWriter = kwargs.pop(
+            'writer', GSpreadWriter(self._worksheet))
+
+        self._backup_worksheet: Worksheet = kwargs.pop('backup_worksheet')
+        self._backup_writer: GSpreadWriter = kwargs.pop(
+            'backup_writer', BackupGSpreadWriter(self._backup_worksheet))
+
         # define
         self._items = []
         self._is_active = None
+        self._job_url = None
+
         # log info
         self._log_config()
 
         super().__init__(**kwargs)
 
-    def _write_rows(self, rows: list or tuple) -> None:
-        for row in rows:
-            self._worksheet.append_row(row)
-
     @property
-    def _starting_row(self):
-        return GSpreadRow.to_tuple(
+    def _start_row(self):
+        return dict(
             url=self.empty_cell,
             header=cfg.gspread_prefixfmt.format(
                 date=datetime.now(),
@@ -65,7 +70,7 @@ class GSpreadItemExporter(BaseItemExporter):
 
     @property
     def _close_row(self):
-        return GSpreadRow.to_tuple(
+        return dict(
             url=self.empty_cell,
             header=cfg.gspread_suffixfmt.format(
                 date=datetime.now(),
@@ -77,12 +82,11 @@ class GSpreadItemExporter(BaseItemExporter):
             index=self.empty_cell,
         )
 
-    def convert_to_rows(self, items: list) -> list:
+    def incapsulate_items(self, items: list) -> list:
         res = []
         if _to_bool(cfg.gspread_enable_prefix):
-            res.append(self._starting_row)
-        for item in items:
-            res.append(GSpreadRow.to_tuple(item=item))
+            res.append(self._start_row)
+        res += items
         if _to_bool(cfg.gspread_enable_suffix):
             res.append(self._close_row)
         return res
@@ -107,9 +111,8 @@ class GSpreadItemExporter(BaseItemExporter):
         self._is_active = True
 
     def finish_exporting(self):
-        rows = self.convert_to_rows(self._items)
-        self._log_rows(rows)
-        self._write_rows(rows)
+        items = self.incapsulate_items(self._items)
+        self._writer.write(*items)
         self._is_active = False
 
     def export_item(self, item):
@@ -120,28 +123,21 @@ class GSpreadItemExporter(BaseItemExporter):
         if not isinstance(item, ArticleItem):
             raise TypeError('Can not export item that is not {}'
                             .format(ArticleItem.__name__))
+        self._backup_writer.write(item)
         self._items.append(item)
 
     # logging methods
     def _log_config(self):
-        logger.info(
-            'GSpread exporting configuration ::\n'
-            '\tspider = "{name}" (id= {id})\n'
-            '\tspreadsheet = "{ss}"\n'
-            '\tworksheet = "{ws}"'
-            .format(
-                name=self._spider.name,
-                id=cfg.current_spider_id,
-                ss=self._worksheet.spreadsheet.title,
-                ws=self._worksheet.title,
-            )
-        )
-
-    def _log_rows(self, rows: list or tuple):
-        string = 'Rows to write:'
-        for row in rows:
-            string += '\n\t("' + '", "'.join(row) + '")'
-        logger.debug(string)
+        msg = str(
+            f'GSpread exporting configuration ::\n'
+            f'\tspider = "{self._spider.name}" (id= {cfg.current_spider_id})\n'
+            f'\tspreadsheet = "{self._worksheet.spreadsheet.title}"\n'
+            f'\tworksheet = "{self._worksheet.title}"')
+        if self._backup_worksheet is not None:
+            msg += f'\tbackup spreadsheet = ' \
+                   f'"{self._backup_worksheet.spreadsheet.title}"\n' \
+                   f'\tbackup worksheet = "{self._backup_worksheet.title}"'
+        logger.info(msg)
 
     def __repr__(self):
         return '<{name} "{status}" items: {i}>'.format(

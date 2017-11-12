@@ -45,6 +45,7 @@ class StoragePipeline(object):
             self.gspread_master = GSpreadMaster()
             self.gspread_exporter = GSpreadItemExporter(
                 worksheet=self.gspread_master.get_worksheet_by_spider(spider),
+                backup_worksheet=self.gspread_master.get_backup_worksheet_by_spider(spider),
                 spider=spider,
             )
             self.gspread_exporter.start_exporting()
