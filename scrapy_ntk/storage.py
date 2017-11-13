@@ -146,27 +146,28 @@ class BaseGSpreadWriter(abc.ABC):
 
         rows = self._convert_items(*items)
         if len(items) == 0:
-            raise ValueError
+            return
         elif len(rows) == 1:
             row = rows[0]
-            logger.debug(f'Writing into "{self._worksheet.spreadsheet.title}/'
+            logger.debug(f'{self.writer_name} :: Writing into '
+                         f'"{self._worksheet.spreadsheet.title}/'
                          f'{self._worksheet.title}":\n\t{row}')
 
             self._write_row(row)
-            logger.info(f'Successfully writen row '
-                        f'into {self._worksheet_name()}')
+            logger.info(f'{self.writer_name} :: Successfully writen row '
+                        f'into {self.worksheet_name}')
         else:
             msg = f'Writing {len(rows)} rows into ' \
                   f'"{self._worksheet.spreadsheet.title}/' \
                   f'{self._worksheet.title}":'
-            for row in rows:
-                msg += f'\n\t{row}'
+            for i, row in enumerate(rows):
+                msg += f'\n {i:s3}. {row}'
             logger.debug(msg)
 
             for row in rows:
                 self._write_row(row)
-            logger.info(f'Successfully writen {len(rows)} rows '
-                        f'into {self._worksheet_name()}')
+            logger.info(f'{self.writer_name} :: Successfully writen '
+                        f'{len(rows)} rows into {self.worksheet_name}')
 
     def _write_row(self, row: tuple):
         self._worksheet.append_row(row)
@@ -174,8 +175,16 @@ class BaseGSpreadWriter(abc.ABC):
     def _convert_items(self, *items) -> Tuple[tuple, ...]:
         return tuple(self.Row.to_tuple(item=item) for item in items)
 
-    def _worksheet_name(self):
+    @property
+    def worksheet_name(self):
         return f'"{self._worksheet.spreadsheet.title}"/"{self._worksheet.title}"'
+
+    @property
+    def writer_name(self):
+        return self.__class__.__name__
+
+    def __repr__(self):
+        return f'<{self.writer_name} :: disabled: {self.disabled}, Row: {self.Row}>'
 
 
 class GSpreadWriter(BaseGSpreadWriter):
