@@ -4,9 +4,9 @@ from datetime import datetime
 from scrapy.exporters import BaseItemExporter
 from gspread import Worksheet
 
-from .config import cfg
-from .item import ArticleItem
-from .storage import GSpreadWriter, BackupGSpreadWriter
+from ..config import cfg
+from ..item import ArticleItem
+from .g_spread import GSpreadWriter, BackupGSpreadWriter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

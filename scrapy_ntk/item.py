@@ -19,7 +19,9 @@ ERRORS = 'errors'
 
 FIELDS = frozenset([URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS])
 
-ITEM_CLASS_NAME = 'ArticleItem'
+CLASS_NAME = 'Article'
+ITEM_CLASS_NAME = f'{CLASS_NAME}Item'
+MODEL_CLASS_NAME = f'{CLASS_NAME}Model'
 
 
 ArticleItem = type(ITEM_CLASS_NAME, (Item, ), {f: Field() for f in FIELDS})

@@ -8,10 +8,9 @@ import scrapy
 from oauth2client.service_account import \
     ServiceAccountCredentials as Credentials
 
-from . import config
-from .item import ArticleItem, DATE, URL
+from ..config import cfg
+from ..item import ArticleItem, DATE, URL
 
-cfg = config.cfg
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -71,7 +70,7 @@ class GSpreadMaster:
         return 'client-secret.json'  # library_depend
 
 
-class Row(abc.ABC):
+class BaseGSpreadRow(abc.ABC):
     """ Place to configure fields order in a table"""
 
     empty_cell = '- - -'
@@ -112,14 +111,14 @@ class Row(abc.ABC):
         pass
 
 
-class GSpreadRow(Row):
+class GSpreadRow(BaseGSpreadRow):
 
     @property
     def columns_order(self):
         return cfg.columns
 
 
-class BackupGSpreadRow(Row):
+class BackupGSpreadRow(BaseGSpreadRow):
 
     @property
     def columns_order(self):
@@ -133,7 +132,7 @@ class BaseGSpreadWriter(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def Row(self) -> Row:
+    def Row(self) -> BaseGSpreadRow:
         pass
 
     @property
