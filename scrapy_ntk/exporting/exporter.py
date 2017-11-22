@@ -2,11 +2,10 @@ import logging
 from datetime import datetime
 
 from scrapy.exporters import BaseItemExporter
-from gspread import Worksheet
 
 from ..config import cfg
 from ..item import ArticleItem
-from .g_spread import GSpreadWriter, BackupGSpreadWriter
+from .g_spread import GSpreadWriter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -34,15 +33,11 @@ class GSpreadItemExporter(BaseItemExporter):
                             f'/{cfg.current_job_id}'
         return str(self._job_url)
 
-    def __init__(self, **kwargs):
-        self._spider = kwargs.pop('spider')
-        self._worksheet: Worksheet = kwargs.pop('worksheet')
-        self._writer: GSpreadWriter = kwargs.pop(
-            'writer', GSpreadWriter(self._worksheet))
-
-        self._backup_worksheet: Worksheet = kwargs.pop('backup_worksheet')
-        self._backup_writer: GSpreadWriter = kwargs.pop(
-            'backup_writer', BackupGSpreadWriter(self._backup_worksheet))
+    def __init__(self, *, spider, writer: GSpreadWriter,
+                 enable_postpone_mode: bool =True, **kwargs):
+        self._spider = spider
+        self._writer = writer
+        self._postpone_mode_enabled = enable_postpone_mode
 
         # define
         self._items = []
@@ -50,7 +45,7 @@ class GSpreadItemExporter(BaseItemExporter):
         self._job_url = None
 
         # log info
-        self._log_config()
+        logger.info(f'Writer initialised = {self._writer}')
 
         super().__init__(**kwargs)
 
@@ -82,7 +77,7 @@ class GSpreadItemExporter(BaseItemExporter):
             index=self.empty_cell,
         )
 
-    def incapsulate_items(self, items: list) -> list:
+    def _incapsulate_items(self, items: list) -> list:
         res = []
         if _to_bool(cfg.gspread_enable_prefix):
             res.append(self._start_row)
@@ -111,8 +106,9 @@ class GSpreadItemExporter(BaseItemExporter):
         self._is_active = True
 
     def finish_exporting(self):
-        items = self.incapsulate_items(self._items)
-        self._writer.write(*items)
+        if self._postpone_mode_enabled:
+            items = self._incapsulate_items(self._items)
+            self._writer.write(*items)
         self._is_active = False
 
     def export_item(self, item):
@@ -123,21 +119,13 @@ class GSpreadItemExporter(BaseItemExporter):
         if not isinstance(item, ArticleItem):
             raise TypeError('Can not export item that is not {}'
                             .format(ArticleItem.__name__))
-        self._backup_writer.write(item)
-        self._items.append(item)
+        self._export(item)
 
-    # logging methods
-    def _log_config(self):
-        msg = str(
-            f'GSpread exporting configuration ::'
-            f'\n\tspider = "{self._spider.name}" (id= {cfg.current_spider_id})'
-            f'\n\tspreadsheet = "{self._worksheet.spreadsheet.title}"'
-            f'\n\tworksheet = "{self._worksheet.title}"')
-        if self._backup_worksheet is not None:
-            msg += f'\n\tbackup spreadsheet = ' \
-                   f'"{self._backup_worksheet.spreadsheet.title}"' \
-                   f'\n\tbackup worksheet = "{self._backup_worksheet.title}"'
-        logger.info(msg)
+    def _export(self, item):
+        if self._postpone_mode_enabled:
+            self._items.append(item)
+        else:
+            self._writer.write(item)
 
     def __repr__(self):
         return f'<{self.__class__.__name__} :: ' \

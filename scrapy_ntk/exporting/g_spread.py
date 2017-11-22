@@ -17,53 +17,32 @@ logger.setLevel(logging.DEBUG)
 
 class GSpreadMaster:
 
-    def __init__(self):
+    def __init__(self, spreadsheet_title: str):
         self._credentials = self._get_credentials()
         self._client = self._get_client()
-        self.spreadsheet = self._client.open(cfg.spreadsheet_title)
-        self.backup_spreadsheet = None
-
-        backup_spreadsheet_title = cfg.backup_spreadsheet_title
-        if backup_spreadsheet_title is not None:
-            self.backup_spreadsheet = self._client.open(backup_spreadsheet_title)
+        self.spreadsheet = self._client.open(spreadsheet_title)
 
     @staticmethod
     def _get_credentials() -> Credentials:
         return Credentials.from_json_keyfile_name(
             cfg.client_secret_path, ['https://spreadsheets.google.com/feeds'])
 
-    @staticmethod
-    def _get_index(spider):
-        try:
-            return cfg.get_worksheet_id(spider.name)
-        except KeyError:
-            raise RuntimeError(
-                f'No worksheet configured for this spider: {spider.name}')
-
-    @classmethod
-    def _get_worksheet(cls, spider, spreadsheet: gspread.Spreadsheet =None):
-        if spreadsheet is None:
-            return None
-
-        index = cls._get_index(spider)
-        try:
-            worksheet = spreadsheet.get_worksheet(index)
-            assert worksheet is not None
-        except AssertionError:
-            raise RuntimeError(
-                f'No worksheet exist for this spider: {spider.name}/{index}')
-        return worksheet
-
     def _get_client(self) -> gspread.Client:
         return gspread.authorize(self._credentials)
 
     def get_worksheet_by_spider(self, spider: scrapy.spiders.Spider) \
             -> gspread.Worksheet:
-        return self._get_worksheet(spider, self.spreadsheet)
-
-    def get_backup_worksheet_by_spider(self, spider: scrapy.spiders.Spider) \
-            -> gspread.Worksheet:
-        return self._get_worksheet(spider, self.backup_spreadsheet)
+        try:
+            index = cfg.get_worksheet_id(spider.name)
+            worksheet = self.spreadsheet.get_worksheet(index)
+            assert worksheet is not None
+        except KeyError:
+            raise RuntimeError(
+                f'No worksheet configured for this spider: {spider.name}')
+        except AssertionError:
+            raise RuntimeError(
+                f'No worksheet exist for this spider: {spider.name}/{index}')
+        return worksheet
 
     @property
     def secret_file_name(self):
@@ -87,19 +66,22 @@ class BaseGSpreadRow(abc.ABC):
         for key, value in item_dict.items():
             if key == DATE and isinstance(value, datetime):
                 new_value = value.strftime(cfg.item_datefmt)
-            elif not isinstance(value, str):
-                logger.warning(
-                    'For "{}" key value ("{}") is not `str` instance'
-                    .format(key, value))
-                new_value = str(value)
+            elif value is None:
+                new_value = ''
             else:
-                new_value = value
+                new_value = str(value)
             item_dict[key] = new_value
         return item_dict
 
     def __iter__(self):
         for column in self.columns_order:
             yield self.serialized[column]
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} columns: {self.columns_order}>'
+
+    def __str__(self):
+        return str(self.serialized)
 
     @classmethod
     def to_tuple(cls, **kwargs) -> tuple:
@@ -125,26 +107,23 @@ class BackupGSpreadRow(BaseGSpreadRow):
         return [DATE, URL]
 
 
-class BaseGSpreadWriter(abc.ABC):
+class GSpreadWriter(abc.ABC):
 
-    def __init__(self, worksheet: gspread.Worksheet=None):
+    _names = set()
+
+    def __init__(self, worksheet: gspread.Worksheet, row: type, name: str =None):
         self._worksheet = worksheet
+        self._row = row
 
-    @property
-    @abc.abstractmethod
-    def Row(self) -> BaseGSpreadRow:
-        pass
-
-    @property
-    def disabled(self):
-        return self._worksheet is None
+        if name is not None and name not in self._names:
+            self._name = name
+        else:
+            self._name = f'{self._writer_name}_{len(self._names)}'
+        self._names.add(self._name)
 
     def write(self, *items: List[ArticleItem]):
-        if self.disabled:
-            return
-
         rows = self._convert_items(*items)
-        prefix = f'{self.writer_name} ::'
+        prefix = f'{self.name} ::'
         if len(items) == 0:
             return
         elif len(rows) == 1:
@@ -176,26 +155,24 @@ class BaseGSpreadWriter(abc.ABC):
         return tuple(self.Row.to_tuple(item=item) for item in items)
 
     @property
+    def Row(self) -> BaseGSpreadRow:
+        return self._row
+
+    @property
+    def worksheet(self):
+        return self._worksheet
+
+    @property
     def worksheet_name(self):
         return f'"{self._worksheet.spreadsheet.title}"/"{self._worksheet.title}"'
 
     @property
-    def writer_name(self):
+    def name(self):
+        return self._name
+
+    @property
+    def _writer_name(self):
         return self.__class__.__name__
 
     def __repr__(self):
-        return f'<{self.writer_name} :: disabled: {self.disabled}, Row: "{self.Row}">'
-
-
-class GSpreadWriter(BaseGSpreadWriter):
-
-    @property
-    def Row(self):
-        return GSpreadRow
-
-
-class BackupGSpreadWriter(BaseGSpreadWriter):
-
-    @property
-    def Row(self):
-        return BackupGSpreadRow
+        return f'<{self._writer_name} :: Row: "{self.Row}"; name: {self.name}; destination: {self.worksheet_name}>'
