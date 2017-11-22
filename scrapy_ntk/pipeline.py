@@ -28,10 +28,6 @@ def _to_boolean(option: str) -> bool:
                            .format(option))
 
 
-def is_any_instance(obj, *types):
-    return any(isinstance(obj, type_) for type_ in types)
-
-
 ENABLE_GSPREAD = _to_boolean(cfg.enable_gspread)
 ENABLE_SHUB = _to_boolean(cfg.enable_shub)
 ENABLE_DATABASE = _to_boolean(cfg.enable_database)
@@ -63,12 +59,6 @@ class ArticlePipeline(abc.ABC):
 class GSpreadPipeline(ArticlePipeline):
 
     def open_spider(self, spider: BaseSpider):
-        # FIXME: move to standalone exporter or extension
-        if is_any_instance(spider, TestingSpider, WorkerSpider):
-            pass
-        elif ENABLE_SHUB and isinstance(spider, SingleSpider):
-            spider.connect_cloud(SHubInterface())
-
         if ENABLE_GSPREAD:
             self.master = GSpreadMaster(cfg.spreadsheet_title)
             self.exporter = GSpreadItemExporter(
