@@ -24,9 +24,9 @@ from urllib.parse import urlparse, urlunparse
 from scrapy import Spider
 from scrapy.http import Response, Request
 
-from .cloud import SHubInterface
+from .tools.cloud import SHubInterface
 from .config import cfg
-from .extractor import ExtractManager
+from .parsing import ExtractManager
 from .item import (
     ArticleItem,
     URL, FINGERPRINT, TAGS, TEXT, HEADER, DATE, MEDIA, ERRORS

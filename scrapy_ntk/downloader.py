@@ -2,7 +2,7 @@ from scrapy.http.request import Request
 from scrapy.http.response import Response
 from scrapy import signals
 
-from .proxy import ProxyManager
+from .tools.proxy import ProxyManager
 from .spider import BaseSpider, WorkerSpider
 
 

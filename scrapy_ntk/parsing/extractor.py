@@ -5,7 +5,7 @@ from scrapy.selector import SelectorList
 
 from .parser import ESCAPE_CHAR_PAIRS, Parser, MediaCounter, ElementsChain
 from .middleware import HTMLMiddleware, MiddlewareContainer, select
-from .item import (
+from ..item import (
     ERRORS,
     MEDIA,
     TAGS,

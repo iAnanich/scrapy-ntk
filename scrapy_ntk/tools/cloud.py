@@ -6,7 +6,7 @@ from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from .config import cfg
+from ..config import cfg
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

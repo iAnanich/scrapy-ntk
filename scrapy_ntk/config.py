@@ -227,6 +227,28 @@ class SettingsMaster:
         )
 
     @property
+    def database_url(self) -> str:
+        from .tools import web
+        remote_url = web.get_response_content(self.get_value("DATABASE_AUTH_URL"))
+        return self.get_value(
+            'DATABASE_URL',
+            json_only=False,
+            args_only=True,
+            required=False,
+            default=remote_url,
+        )
+
+    @property
+    def database_table_name(self) -> str:
+        return self.get_value(
+            'DATABASE_TABLE_NAME',
+            json_only=False,
+            args_only=False,
+            required=True,
+            default=None,
+        )
+
+    @property
     def gspread_prefixfmt(self) -> str:
         return self.get_value(
             'GSPREAD_PREFIXFMT',
@@ -283,24 +305,28 @@ class SettingsMaster:
         return self.get_value(
             'ENABLE_GSPREAD',
             default='True',
-            required=False,
-            args_only=True, )
+            required=False,)
+
+    @property
+    def enable_database(self) -> str:
+        return self.get_value(
+            'ENABLE_DATABASE',
+            default='True',
+            required=False,)
 
     @property
     def enable_shub(self) -> str:
         return self.get_value(
             'ENABLE_SHUB',
             default='True',
-            required=False,
-            args_only=True, )
+            required=False,)
 
     @property
     def enable_proxy(self):
         return self.get_value(
             'ENABLE_PROXY',
             default='False',
-            required=False,
-            args_only=True, )
+            required=False,)
 
 
 cfg = SettingsMaster()

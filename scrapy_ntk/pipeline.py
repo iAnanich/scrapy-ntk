@@ -1,11 +1,21 @@
-import logging
+import abc
+
+from scrapy.exporters import BaseItemExporter
 
 from .item import ArticleItem
 from .config import cfg
-from .cloud import SHubInterface
+from .tools.cloud import SHubInterface
 from .spider import SingleSpider, TestingSpider, BaseSpider, WorkerSpider
-from .storage import GSpreadMaster
-from .exporter import GSpreadItemExporter
+from .exporting import (
+    GSpreadMaster,
+    GSpreadItemExporter,
+    SQLAlchemyItemExporter,
+    SQLAlchemyMaster,
+    SQLAlchemyWriter,
+    GSpreadWriter,
+    GSpreadRow,
+    BackupGSpreadRow,
+)
 
 
 def _to_boolean(option: str) -> bool:
@@ -24,45 +34,82 @@ def is_any_instance(obj, *types):
 
 ENABLE_GSPREAD = _to_boolean(cfg.enable_gspread)
 ENABLE_SHUB = _to_boolean(cfg.enable_shub)
+ENABLE_DATABASE = _to_boolean(cfg.enable_database)
 
 
-class StoragePipeline(object):
+class ArticlePipeline(abc.ABC):
 
     def __init__(self):
-        self.gspread_master = None
-        self.gspread_exporter = None
-        self.cloud_interface = None
+        self.exporter: BaseItemExporter = None
+        self.master = None
+
+    @abc.abstractmethod
+    def open_spider(self, spider: BaseSpider):
+        pass
+
+    def close_spider(self, spider):
+        if self.exporter is not None:
+            self.exporter.finish_exporting()
+
+    def process_item(self, item: ArticleItem, spider) -> ArticleItem:
+        if isinstance(item, ArticleItem):
+            if self.exporter is not None:
+                self.exporter.export_item(item)
+        else:
+            pass
+        return item
+
+
+class GSpreadPipeline(ArticlePipeline):
 
     def open_spider(self, spider: BaseSpider):
-
+        # FIXME: move to standalone exporter or extension
         if is_any_instance(spider, TestingSpider, WorkerSpider):
             pass
         elif ENABLE_SHUB and isinstance(spider, SingleSpider):
-            self.cloud_interface = SHubInterface()
-            spider.connect_cloud(self.cloud_interface)
+            spider.connect_cloud(SHubInterface())
 
-        if ENABLE_GSPREAD and not isinstance(spider, WorkerSpider):
-            self.gspread_master = GSpreadMaster()
-            self.gspread_exporter = GSpreadItemExporter(
-                worksheet=self.gspread_master.get_worksheet_by_spider(spider),
-                backup_worksheet=self.gspread_master.get_backup_worksheet_by_spider(spider),
+        if ENABLE_GSPREAD:
+            self.master = GSpreadMaster(cfg.spreadsheet_title)
+            self.exporter = GSpreadItemExporter(
+                enable_postpone_mode=True,
                 spider=spider,
+                writer=GSpreadWriter(
+                    worksheet=self.master.get_worksheet_by_spider(spider),
+                    row=GSpreadRow,
+                    name="main"
+                )
             )
-            self.gspread_exporter.start_exporting()
+            self.exporter.start_exporting()
 
-    def close_spider(self, spider: BaseSpider):
-        if self.gspread_exporter is not None:
-            self.gspread_exporter.finish_exporting()
 
-    def process_item(self, item: ArticleItem, spider: BaseSpider):
-        if isinstance(item, dict):
-            return item
-        elif isinstance(item, ArticleItem):
-            if ENABLE_GSPREAD:
-                self.gspread_exporter.export_item(item)
-            return item
-        else:
-            logging.warning(
-                'Unknown item type: {}. Item will not be saved into exporters.'
-                .format(repr(item)))
-            return item
+class BackupGSpreadPipeline(ArticlePipeline):
+
+    def open_spider(self, spider: BaseSpider):
+        if ENABLE_GSPREAD:
+            self.master = GSpreadMaster(cfg.backup_spreadsheet_title)
+            self.exporter = GSpreadItemExporter(
+                enable_postpone_mode=False,
+                spider=spider,
+                writer=GSpreadWriter(
+                    worksheet=self.master.get_worksheet_by_spider(spider),
+                    row=BackupGSpreadRow,
+                    name="backup"
+                )
+            )
+            self.exporter.start_exporting()
+
+
+class SQLAlchemyPipeline(ArticlePipeline):
+
+    def open_spider(self, spider: BaseSpider):
+        if ENABLE_DATABASE:
+            self.master = SQLAlchemyMaster(cfg.database_url, cfg.database_table_name)
+            self.exporter = SQLAlchemyItemExporter(
+                enable_postpone_mode=True,
+                writer=SQLAlchemyWriter(
+                    session=self.master.session,
+                    Model=self.master.Model,
+                )
+            )
+            self.exporter.start_exporting()
