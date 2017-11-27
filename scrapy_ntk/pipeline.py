@@ -6,8 +6,16 @@ from .item import ArticleItem
 from .config import cfg
 from .tools.cloud import SHubInterface
 from .spider import SingleSpider, TestingSpider, BaseSpider, WorkerSpider
-from .exporting import GSpreadMaster, GSpreadItemExporter
-from .exporting.g_spread import GSpreadWriter, GSpreadRow, BackupGSpreadRow
+from .exporting import (
+    GSpreadMaster,
+    GSpreadItemExporter,
+    SQLAlchemyItemExporter,
+    SQLAlchemyMaster,
+    SQLAlchemyWriter,
+    GSpreadWriter,
+    GSpreadRow,
+    BackupGSpreadRow,
+)
 
 
 def _to_boolean(option: str) -> bool:
@@ -26,6 +34,7 @@ def is_any_instance(obj, *types):
 
 ENABLE_GSPREAD = _to_boolean(cfg.enable_gspread)
 ENABLE_SHUB = _to_boolean(cfg.enable_shub)
+ENABLE_DATABASE = _to_boolean(cfg.enable_database)
 
 
 class ArticlePipeline(abc.ABC):
@@ -86,6 +95,21 @@ class BackupGSpreadPipeline(ArticlePipeline):
                     worksheet=self.master.get_worksheet_by_spider(spider),
                     row=BackupGSpreadRow,
                     name="backup"
+                )
+            )
+            self.exporter.start_exporting()
+
+
+class SQLAlchemyPipeline(ArticlePipeline):
+
+    def open_spider(self, spider: BaseSpider):
+        if ENABLE_DATABASE:
+            self.master = SQLAlchemyMaster(cfg.database_url, cfg.database_table_name)
+            self.exporter = SQLAlchemyItemExporter(
+                enable_postpone_mode=True,
+                writer=SQLAlchemyWriter(
+                    session=self.master.session,
+                    Model=self.master.Model,
                 )
             )
             self.exporter.start_exporting()
