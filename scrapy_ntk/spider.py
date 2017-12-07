@@ -17,6 +17,8 @@
 
 import logging
 import abc
+import random
+import string
 
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
@@ -69,7 +71,6 @@ class BaseSpider(abc.ABC, Spider):
     _proxy_mode = None
 
     _article_item_class = ArticleItem
-    _default_fingerprint = LOCAL_EMPTY_FINGERPRINT
 
     name: str = None
 
@@ -96,13 +97,19 @@ class BaseSpider(abc.ABC, Spider):
             fingerprint = response.meta['fingerprint']
         except KeyError:
             # case when used with `crawl` command
-            fingerprint = self._default_fingerprint
+            fingerprint = self.get_random_fingerprint()
         kwargs.update({
             URL: response.url,
             FINGERPRINT: fingerprint,
             DATE: datetime.now()
         })
         yield self._article_item_class(**kwargs)
+
+    @staticmethod
+    def get_random_fingerprint():
+        length = 8
+        return ''.join(random.SystemRandom().choice(
+            string.ascii_uppercase + string.digits) for _ in range(length))
 
     @property
     def enable_proxy(self):

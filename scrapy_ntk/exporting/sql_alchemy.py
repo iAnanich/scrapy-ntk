@@ -26,9 +26,7 @@ class SQLAlchemyMaster:
         self._session: Session = sessionmaker(bind=self._engine)()
         self._model_cls = self.create_model(table_name)
 
-        # FIXME
-        #DECLARATIVE_BASE.metadata.create_all(self._engine)
-        logger.info(f'Initialized master for {table_name} table.')
+        logger.info(f'Initialized master for <{table_name}> table.')
 
     @property
     def session(self):
@@ -37,6 +35,9 @@ class SQLAlchemyMaster:
     @property
     def Model(self):
         return self._model_cls
+
+    def create_table(self):
+        DECLARATIVE_BASE.metadata.create_all(self._engine)
 
     @staticmethod
     def create_model(table_name: str):
@@ -94,7 +95,7 @@ class SQLAlchemyWriter:
             pass
         elif len(items) == 1:
             item = items[0]
-            msg = f'Trying to commit this item:\n\t{item}'
+            msg = f'Trying to commit this item:\n{item}'
             logger.debug(msg)
         else:
             msg = f'Trying to commit those {len(items)} items:'
