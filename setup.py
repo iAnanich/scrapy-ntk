@@ -22,5 +22,6 @@ setup(
         'gspread>=0.6.0',
         'SQLAlchemy>=1.1.0',
         'oauth2client>=4.1.0',
+        'postgres>=2.2.0',
     ]
 )
