@@ -1,15 +1,17 @@
-import logging
 import abc
+import logging
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Type, TypeVar
 
 import gspread
 import scrapy
 from oauth2client.service_account import \
     ServiceAccountCredentials as Credentials
 
+from ..base import BaseArticleItemWriter
 from ..config import cfg
 from ..item import ArticleItem, DATE, URL
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -93,6 +95,9 @@ class BaseGSpreadRow(abc.ABC):
         pass
 
 
+GSpreadRowTV = TypeVar('GspreadRow', bound=BaseGSpreadRow)
+
+
 class GSpreadRow(BaseGSpreadRow):
 
     @property
@@ -107,19 +112,14 @@ class BackupGSpreadRow(BaseGSpreadRow):
         return [DATE, URL]
 
 
-class GSpreadWriter(abc.ABC):
+class GSpreadWriter(BaseArticleItemWriter):
 
-    _names = set()
-
-    def __init__(self, worksheet: gspread.Worksheet, row: type, name: str =None):
+    def __init__(self, worksheet: gspread.Worksheet,
+                 row: Type[GSpreadRowTV], **kwargs):
         self._worksheet = worksheet
         self._row = row
 
-        if name is not None and name not in self._names:
-            self._name = name
-        else:
-            self._name = f'{self._writer_name}_{len(self._names)}'
-        self._names.add(self._name)
+        super().__init__(**kwargs)
 
     def write(self, *items: List[ArticleItem]):
         rows = self._convert_items(*items)
@@ -128,12 +128,12 @@ class GSpreadWriter(abc.ABC):
             return
         elif len(rows) == 1:
             row = rows[0]
-            logger.debug(f'{prefix} Writing into '
+            self.logger.debug(f'{prefix} Writing into '
                          f'"{self._worksheet.spreadsheet.title}/'
                          f'{self._worksheet.title}":\n\t{row}')
 
             self._write_row(row)
-            logger.info(f'{prefix} Successfully writen row '
+            self.logger.info(f'{prefix} Successfully writen row '
                         f'into {self.worksheet_name}')
         else:
             msg = f'{prefix} Writing {len(rows)} rows into ' \
@@ -141,11 +141,11 @@ class GSpreadWriter(abc.ABC):
                   f'{self._worksheet.title}":'
             for i, row in enumerate(rows):
                 msg += f'\n{i:4}. {row}'
-            logger.debug(msg)
+            self.logger.debug(msg)
 
             for row in rows:
                 self._write_row(row)
-            logger.info(f'{prefix} Successfully writen '
+            self.logger.info(f'{prefix} Successfully writen '
                         f'{len(rows)} rows into {self.worksheet_name}')
 
     def _write_row(self, row: tuple):
@@ -155,7 +155,7 @@ class GSpreadWriter(abc.ABC):
         return tuple(self.Row.to_tuple(item=item) for item in items)
 
     @property
-    def Row(self) -> BaseGSpreadRow:
+    def Row(self) -> Type[GSpreadRowTV]:
         return self._row
 
     @property
@@ -166,13 +166,5 @@ class GSpreadWriter(abc.ABC):
     def worksheet_name(self):
         return f'"{self._worksheet.spreadsheet.title}"/"{self._worksheet.title}"'
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def _writer_name(self):
-        return self.__class__.__name__
-
     def __repr__(self):
-        return f'<{self._writer_name} :: Row: "{self.Row}"; name: {self.name}; destination: {self.worksheet_name}>'
+        return f'<{self.name} :: Row: "{self.Row}"; destination: {self.worksheet_name}>'

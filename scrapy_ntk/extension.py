@@ -3,7 +3,7 @@ import logging
 from scrapy.exceptions import NotConfigured
 from scrapy import signals
 
-from .spider import SingleSpider, TestingSpider, WorkerSpider
+from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
 from .tools.cloud import SHubInterface
 
@@ -42,5 +42,5 @@ class SHubConnector:
     def spider_opened(self, spider):
         if is_any_instance(spider, TestingSpider, WorkerSpider):
             pass
-        elif self.enabled and isinstance(spider, SingleSpider):
+        elif self.enabled and isinstance(spider, NewsArticleSpider):
             spider.connect_cloud(SHubInterface())

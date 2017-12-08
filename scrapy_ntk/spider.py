@@ -15,38 +15,19 @@
     * callback - method which takes request and yields another request or item
 """
 
-import logging
 import abc
-import random
-import string
-
-from datetime import datetime
+import logging
 from urllib.parse import urlparse, urlunparse
 
 from scrapy import Spider
 from scrapy.http import Response, Request
 
-from .tools.cloud import SHubInterface
-from .config import cfg
-from .parsing import ExtractManager
+from .base import BaseArticleSpider
 from .item import (
-    ArticleItem,
-    URL, FINGERPRINT, TAGS, TEXT, HEADER, DATE, MEDIA, ERRORS
+    FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS
 )
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-LOCAL_EMPTY_FINGERPRINT = 'LocalEmptyFingerprint'
-
-
-def _to_bool(string: str) -> bool:
-    if string in ['True', '1']:
-        return True
-    elif string in ['False', '0']:
-        return False
-    else:
-        raise ValueError('Unknown string value: ' + string)
+from .parsing import ExtractManager
+from .tools.cloud import SHubInterface
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
@@ -65,62 +46,7 @@ class FingerprintsContainer(frozenset):
         return ', '.join(self)
 
 
-class BaseSpider(abc.ABC, Spider):
-
-    _enable_proxy = False
-    _proxy_mode = None
-
-    _article_item_class = ArticleItem
-
-    name: str = None
-
-    def __init__(self, *args, **kwargs):
-        # check proxy
-        if self._enable_proxy or _to_bool(cfg.enable_proxy):
-            self._enable_proxy = True
-            self._proxy_mode = self._proxy_mode or cfg.proxy_mode
-            logger.info('Spider set `_enable_proxy=True`.')
-            logger.info('Spider set `_proxy_mode={}`.'
-                        .format(self._proxy_mode))
-
-        super().__init__(*args, **kwargs)
-
-    def _yield_article_item(self, response: Response, **kwargs):
-        """
-        Yields `ArticleItem` instances with `url` and `fingerprint` arguments
-        extracted from given `response` object.
-        :param response: `scrapy.http.Response` from "article page"
-        :param kwargs: fields for `ArticleItem`
-        :return: yields `ArticleItem` instance
-        """
-        try:
-            fingerprint = response.meta['fingerprint']
-        except KeyError:
-            # case when used with `crawl` command
-            fingerprint = self.get_random_fingerprint()
-        kwargs.update({
-            URL: response.url,
-            FINGERPRINT: fingerprint,
-            DATE: datetime.now()
-        })
-        yield self._article_item_class(**kwargs)
-
-    @staticmethod
-    def get_random_fingerprint():
-        length = 8
-        return ''.join(random.SystemRandom().choice(
-            string.ascii_uppercase + string.digits) for _ in range(length))
-
-    @property
-    def enable_proxy(self):
-        return self._enable_proxy
-
-    @property
-    def proxy_mode(self):
-        return self._proxy_mode
-
-
-class SingleSpider(BaseSpider, abc.ABC):
+class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     # Just a spider name used by Scrapy to identify it.
     # Must be a string.
@@ -171,7 +97,7 @@ class SingleSpider(BaseSpider, abc.ABC):
         log_msg = 'Scraped fingerprints:'
         for i in self._scraped_fingerprints:
             log_msg += f'\n\t{i}'
-        logger.info(log_msg)
+        self.logger.info(log_msg)
 
     # =================
     #  "parse" methods
@@ -188,7 +114,7 @@ class SingleSpider(BaseSpider, abc.ABC):
         yield from self._yield_requests_from_response(response)
 
     def parse_article(self, response: Response):
-        logger.info('Started extracting from {}'.format(response.url))
+        self.logger.info('Started extracting from {}'.format(response.url))
         # produce item
         yield from self._yield_article_item(
             response, **self.extract_manager.extract_all(response))
@@ -287,7 +213,7 @@ class SingleSpider(BaseSpider, abc.ABC):
                                       .format(field_name))
 
 
-class TestingSpider(BaseSpider, abc.ABC):
+class TestingSpider(BaseArticleSpider, abc.ABC):
     def parse(self, response: Response):
         yield from self._yield_article_item(
             response, **{

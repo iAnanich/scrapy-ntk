@@ -6,7 +6,7 @@ LIB = 'scrapy_ntk'
 
 setup(
     name=LIB,
-    version='1.6.0',
+    version='1.6.3',
     license='MIT',
     author='Illia Ananich',
     author_email='illia.ananich@gmail.com',
@@ -22,5 +22,6 @@ setup(
         'gspread>=0.6.0',
         'SQLAlchemy>=1.1.0',
         'oauth2client>=4.1.0',
+        'postgres>=2.2.0',
     ]
 )
