@@ -1,22 +1,21 @@
 import abc
 import logging
 
-from scrapy.exporters import BaseItemExporter
-
-from .item import ArticleItem
 from .config import cfg
-from .tools.cloud import SHubInterface
-from .spider import SingleSpider, TestingSpider, BaseSpider, WorkerSpider
 from .exporting import (
     GSpreadMaster,
-    GSpreadItemExporter,
-    SQLAlchemyItemExporter,
+    GSpreadAIE,
+    SQLAlchemyAIE,
     SQLAlchemyMaster,
     SQLAlchemyWriter,
     GSpreadWriter,
     GSpreadRow,
     BackupGSpreadRow,
 )
+from .item import ArticleItem
+from .spider import BaseSpider
+from .exporting.base import BaseArticleItemExporter
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -40,7 +39,7 @@ ENABLE_DATABASE = _to_boolean(cfg.enable_database)
 class ArticlePipeline(abc.ABC):
 
     def __init__(self):
-        self._exporter: BaseItemExporter = None
+        self._exporter: BaseArticleItemExporter = None
         self._master = None
 
         self._state = None
@@ -67,12 +66,12 @@ class ArticlePipeline(abc.ABC):
         logger.info(f'{self.name} | state update: {self._state}')
 
     @property
-    def exporter(self) -> BaseItemExporter:
+    def exporter(self) -> BaseArticleItemExporter:
         return self._exporter
 
     @exporter.setter
-    def exporter(self, new: BaseItemExporter):
-        if not isinstance(new, BaseItemExporter):
+    def exporter(self, new: BaseArticleItemExporter):
+        if not isinstance(new, BaseArticleItemExporter):
             exporter_type_msg = \
                 f'{self.name} | You are trying to set "exporter" ' \
                 f'with wrong type: {type(new)}'
@@ -98,7 +97,7 @@ class ArticlePipeline(abc.ABC):
             self.is_active = False
         else:
             if self.exporter is None:
-                logger.error(f'{self.name} | "exporter" is not set up.')
+                logger.warning(f'{self.name} | "exporter" is not set up.')
                 self.is_active = False
             else:
                 self.is_active = True
@@ -115,7 +114,9 @@ class ArticlePipeline(abc.ABC):
     def close_spider(self, spider):
         if self._state:
             self.exporter.finish_exporting()
-            logger.info(f'{self.name} | Successfully finished {self.exporter} exporter.')
+            logger.info(
+                f'{self.name} | Successfully finished <{self.exporter.name}> '
+                f'exporter with {self.exporter.count} items exported.')
 
     def process_item(self, item: ArticleItem, spider) -> ArticleItem:
         if isinstance(item, ArticleItem):
@@ -136,9 +137,8 @@ class GSpreadPipeline(ArticlePipeline):
     def setup_exporter(self, spider: BaseSpider):
         if ENABLE_GSPREAD:
             self.master = GSpreadMaster(cfg.spreadsheet_title)
-            self.exporter = GSpreadItemExporter(
+            self.exporter = GSpreadAIE(
                 enable_postpone_mode=True,
-                spider=spider,
                 writer=GSpreadWriter(
                     worksheet=self.master.get_worksheet_by_spider(spider),
                     row=GSpreadRow,
@@ -152,9 +152,8 @@ class BackupGSpreadPipeline(ArticlePipeline):
     def setup_exporter(self, spider: BaseSpider):
         if ENABLE_GSPREAD:
             self.master = GSpreadMaster(cfg.backup_spreadsheet_title)
-            self.exporter = GSpreadItemExporter(
+            self.exporter = GSpreadAIE(
                 enable_postpone_mode=False,
-                spider=spider,
                 writer=GSpreadWriter(
                     worksheet=self.master.get_worksheet_by_spider(spider),
                     row=BackupGSpreadRow,
@@ -168,7 +167,7 @@ class SQLAlchemyPipeline(ArticlePipeline):
     def setup_exporter(self, spider: BaseSpider):
         if ENABLE_DATABASE:
             self.master = SQLAlchemyMaster(cfg.database_url, cfg.database_table_name)
-            self.exporter = SQLAlchemyItemExporter(
+            self.exporter = SQLAlchemyAIE(
                 enable_postpone_mode=True,
                 writer=SQLAlchemyWriter(
                     session=self.master.session,

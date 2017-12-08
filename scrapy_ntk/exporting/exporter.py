@@ -1,12 +1,11 @@
 import logging
 from datetime import datetime
 
-from scrapy.exporters import BaseItemExporter
-
-from ..config import cfg
-from ..item import ArticleItem
+from .base import BaseArticleItemExporter
 from .g_spread import GSpreadWriter
 from .sql_alchemy import SQLAlchemyWriter
+from ..config import cfg
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -21,34 +20,18 @@ def _to_bool(string: str) -> bool:
         raise ValueError('Unknown string value: ' + string)
 
 
-class GSpreadItemExporter(BaseItemExporter):
+class GSpreadAIE(BaseArticleItemExporter):
 
     empty_cell = '-----'
 
+    _writer_type = GSpreadWriter
+
     @property
     def job_url(self):
-        if self._job_url is None:
-            self._job_url = f'https://app.scrapinghub.com/p' \
-                            f'/{cfg.current_project_id}' \
-                            f'/{cfg.current_spider_id}' \
-                            f'/{cfg.current_job_id}'
-        return str(self._job_url)
-
-    def __init__(self, *, spider, writer: GSpreadWriter,
-                 enable_postpone_mode: bool =True, **kwargs):
-        self._spider = spider
-        self._writer = writer
-        self._postpone_mode_enabled = enable_postpone_mode
-
-        # define
-        self._items = []
-        self._is_active = None
-        self._job_url = None
-
-        # log info
-        logger.info(f'Writer initialised = {self._writer}')
-
-        super().__init__(**kwargs)
+        return f'https://app.scrapinghub.com/p' \
+               f'/{cfg.current_project_id}' \
+               f'/{cfg.current_spider_id}' \
+               f'/{cfg.current_job_id}'
 
     @property
     def _start_row(self):
@@ -87,108 +70,11 @@ class GSpreadItemExporter(BaseItemExporter):
             res.append(self._close_row)
         return res
 
-    @property
-    def items(self):
-        return self._items
-
-    @property
-    def status(self):
-        if self._is_active is None:
-            return 'idle'
-        elif self._is_active is True:
-            return 'active'
-        elif self._is_active is False:
-            return 'closed'
-        else:
-            raise TypeError('Can not recognise status.')
-
-    # exporter methods
-    def start_exporting(self):
-        self._is_active = True
-
-    def finish_exporting(self):
-        if self._postpone_mode_enabled:
-            items = self._incapsulate_items(self._items)
-            self._writer.write(*items)
-        self._is_active = False
-
-    def export_item(self, item):
-        if self._is_active is not True:
-            raise RuntimeError(
-                'Can not append item when session have "{}" status'
-                .format(self.status))
-        if not isinstance(item, ArticleItem):
-            raise TypeError('Can not export item that is not {}'
-                            .format(ArticleItem.__name__))
-        self._export(item)
-
-    def _export(self, item):
-        if self._postpone_mode_enabled:
-            self._items.append(item)
-        else:
-            self._writer.write(item)
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__} :: ' \
-               f'status: "{self.status}", items: {len(self._items)}>'
+    def _finish_postpone(self):
+        items = self._incapsulate_items(self._items)
+        self._writer.write(*items)
 
 
-class SQLAlchemyItemExporter(BaseItemExporter):
+class SQLAlchemyAIE(BaseArticleItemExporter):
 
-    def __init__(self, *, writer: SQLAlchemyWriter,
-                 enable_postpone_mode: bool =True, **kwargs):
-        self._writer = writer
-        self._postpone_mode_enabled = enable_postpone_mode
-
-        # define
-        self._items = []
-        self._is_active = None
-
-        # log info
-        logger.info(f'Writer initialised = {self._writer}')
-
-        super().__init__(**kwargs)
-
-    # exporter methods
-    def start_exporting(self):
-        self._is_active = True
-
-    def finish_exporting(self):
-        if self._postpone_mode_enabled:
-            self._writer.write(*self._items)
-        self._is_active = False
-
-    def export_item(self, item):
-        if self._is_active is not True:
-            raise RuntimeError(
-                'Can not append item when session have "{}" status'
-                .format(self.status))
-        if not isinstance(item, ArticleItem):
-            raise TypeError('Can not export item that is not {}'
-                            .format(ArticleItem.__name__))
-        self._export(item)
-
-    @property
-    def items(self):
-        return self._items
-
-    @property
-    def status(self):
-        if self._is_active is None:
-            return 'idle'
-        elif self._is_active is True:
-            return 'active'
-        elif self._is_active is False:
-            return 'closed'
-        else:
-            raise TypeError('Can not recognise status.')
-
-    def _export(self, item):
-        if self._postpone_mode_enabled:
-            self._items.append(item)
-        else:
-            self._writer.write(item)
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__} :: ' \
-               f'status: "{self.status}", items: {len(self._items)}>'
+    _writer_type = SQLAlchemyWriter
