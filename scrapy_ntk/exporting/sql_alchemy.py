@@ -25,7 +25,7 @@ class SQLAlchemyMaster:
 
     def __init__(self, database_url: str, table_name: str):
         self._url = database_url
-        self._engine: Engine = create_engine(self._url, echo=True)
+        self._engine: Engine = create_engine(self._url, echo=False)
         self._session: Session = sessionmaker(bind=self._engine)()
         self._model_cls = self.create_model(table_name)
 

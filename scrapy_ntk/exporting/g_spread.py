@@ -123,20 +123,19 @@ class GSpreadWriter(BaseArticleItemWriter):
 
     def write(self, *items: List[ArticleItem]):
         rows = self._convert_items(*items)
-        prefix = f'{self.name} ::'
         if len(items) == 0:
             return
         elif len(rows) == 1:
             row = rows[0]
-            self.logger.debug(f'{prefix} Writing into '
+            self.logger.debug(f'Writing into '
                          f'"{self._worksheet.spreadsheet.title}/'
                          f'{self._worksheet.title}":\n\t{row}')
 
             self._write_row(row)
-            self.logger.info(f'{prefix} Successfully writen row '
+            self.logger.info(f'Successfully writen row '
                         f'into {self.worksheet_name}')
         else:
-            msg = f'{prefix} Writing {len(rows)} rows into ' \
+            msg = f'Writing {len(rows)} rows into ' \
                   f'"{self._worksheet.spreadsheet.title}/' \
                   f'{self._worksheet.title}":'
             for i, row in enumerate(rows):
@@ -145,7 +144,7 @@ class GSpreadWriter(BaseArticleItemWriter):
 
             for row in rows:
                 self._write_row(row)
-            self.logger.info(f'{prefix} Successfully writen '
+            self.logger.info(f'Successfully writen '
                         f'{len(rows)} rows into {self.worksheet_name}')
 
     def _write_row(self, row: tuple):
