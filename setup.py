@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 setup(
@@ -7,7 +7,7 @@ setup(
     license='MIT',
     author='Illia Ananich',
     author_email='illia.ananich@gmail.com',
-    packages=['scrapy_ntk'],
+    packages=find_packages('src'),
     install_requires=[
         'scrapinghub>=2.0.0',
         'Scrapy>=1.4.0',
