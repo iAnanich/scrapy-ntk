@@ -6,7 +6,7 @@ LIB = 'scrapy_ntk'
 
 setup(
     name=LIB,
-    version='1.6.0',
+    version='1.6.3',
     license='MIT',
     author='Illia Ananich',
     author_email='illia.ananich@gmail.com',
