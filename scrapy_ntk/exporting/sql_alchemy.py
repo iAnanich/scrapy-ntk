@@ -1,14 +1,17 @@
 import logging
-import re
 from typing import List
 
 from sqlalchemy import Column, String, Integer, DateTime
 from sqlalchemy.engine import create_engine, Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.exc import SQLAlchemyError
 
-from ..item import FIELDS, MODEL_CLASS_NAME, ArticleItem, STRING_FIELDS, DATE_FIELDS
+from .base import BaseArticleItemWriter
+from ..item import (
+    FIELDS, MODEL_CLASS_NAME, ArticleItem, STRING_FIELDS,
+    DATE_FIELDS
+)
 
 
 logger = logging.getLogger(__name__)
@@ -69,26 +72,28 @@ class SQLAlchemyMaster:
         return model_class
 
 
-class SQLAlchemyWriter:
+class SQLAlchemyWriter(BaseArticleItemWriter):
 
-    def __init__(self, session: Session, Model: DECLARATIVE_BASE):
+    def __init__(self, session: Session, Model: DECLARATIVE_BASE, **kwargs):
         if not isinstance(session, Session):
             raise TypeError
         self._session = session
         self._Model = Model
 
+        super().__init__(**kwargs)
+
     def to_model(self, item: ArticleItem):
         return self._Model(**item)
 
-    def write(self, *items: List[DECLARATIVE_BASE]):
+    def write(self, *items: List[ArticleItem]):
         self._log_items(*items)
         try:
             self._session.add_all(self.to_model(i) for i in items)
             self._session.commit()
         except SQLAlchemyError as exc:
-            logger.exception(f'Error while trying to commit items: {exc}.')
+            self.logger.exception(f'Error while trying to commit items: {exc}.')
             self._session.rollback()
-            logger.debug(f'Session rollback completed.')
+            self.logger.debug(f'Session rollback completed.')
 
     def _log_items(self, *items):
         if len(items) == 0:
@@ -96,9 +101,9 @@ class SQLAlchemyWriter:
         elif len(items) == 1:
             item = items[0]
             msg = f'Trying to commit this item:\n{item}'
-            logger.debug(msg)
+            self.logger.debug(msg)
         else:
             msg = f'Trying to commit those {len(items)} items:'
             for i, item in enumerate(items):
                 msg += f'\n\t{i:4}. {item}'
-            logger.debug(msg)
+            self.logger.debug(msg)
