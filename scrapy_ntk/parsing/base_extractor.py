@@ -1,16 +1,15 @@
-import logging
 import abc
 
 from scrapy.selector import SelectorList
 
-from .parser import ESCAPE_CHAR_PAIRS, Parser, MediaCounter, ElementsChain
-from .middleware import HTMLMiddleware, MiddlewareContainer, select
+from .parser import ESCAPE_CHAR_PAIRS
+from ..base import BaseExtractor
 from ..item import (
-    ERRORS,
-    MEDIA,
     TAGS,
     TEXT,
     HEADER,
+    ERRORS,
+    MEDIA,
 )
 
 
@@ -19,76 +18,7 @@ LINK = 'link'
 NAMES = frozenset({TEXT, HEADER, TAGS, LINK})
 
 
-class Extractor(abc.ABC):
-
-    name: str = None
-
-    exception_template = '!!! {type}: {message} !!!'
-
-    def __init__(self):
-        self._fields_storage = {field: None for field in self.fields}
-        self._is_ready = False
-
-        self.logger = self.create_logger()
-
-    def create_logger(self):
-        logger = logging.getLogger(self.name)
-        logger.setLevel(logging.DEBUG)
-        return logger
-
-    def _format_exception(self, exception: Exception):
-        self.logger.exception(str(exception))
-        return self.exception_template.format(
-            type=type(exception), message=exception.args)
-
-    def _attr_checker(self, name, converter: type, default=None):
-        if hasattr(self, name):
-            return converter(getattr(self, name))
-        elif default is not None:
-            return default
-        else:
-            raise NotImplementedError(f"Please, implement attribute `{name}`.")
-
-    def _save_result(self, result: str, field: str = None):
-        if field is None:
-            field = self.name
-        if field not in self.fields:
-            raise ValueError
-        self._fields_storage[field] = str(result)
-
-    @abc.abstractmethod
-    def extract_from(self, obj: object) -> str:
-        pass
-
-    def safe_extract_from(self, obj: object) -> str:
-        try:
-            string = self.extract_from(obj)
-            self._save_result(string)
-            self.ready = True
-        except Exception as exc:
-            string = self._format_exception(exc)
-        return string
-
-    def get_dict(self):
-        return self._fields_storage.copy()
-
-    @property
-    def fields(self):
-        return self._attr_checker('_fields', set, {self.name})
-
-    @property
-    def ready(self):
-        return self._is_ready
-
-    @ready.setter
-    def ready(self, val: bool):
-        self._is_ready = bool(val)
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__} : "{self.name}">'
-
-
-class CSSExtractor(Extractor, abc.ABC):
+class CSSExtractor(BaseExtractor, abc.ABC):
     """
     Extracts data from HTML using `scrapy.selector.SelectorList.css` method.
     It's more useful than old `ParseMixin` class implementation because
@@ -225,7 +155,7 @@ class GeneratorCSSExtractor(CSSExtractor, abc.ABC):
             yield self._format(selected.extract())
 
 
-class VoidExtractor(Extractor):
+class VoidExtractor(BaseExtractor):
     """
     Extractor that returns "void".
     Returns `''` string for `extract_from` method.

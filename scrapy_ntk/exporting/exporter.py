@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from .base import BaseArticleItemExporter
+from ..base import BaseArticleItemExporter
 from .g_spread import GSpreadWriter
 from .sql_alchemy import SQLAlchemyWriter
 from ..config import cfg

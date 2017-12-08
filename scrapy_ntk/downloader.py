@@ -3,7 +3,7 @@ from scrapy.http.response import Response
 from scrapy import signals
 
 from .tools.proxy import ProxyManager
-from .spider import BaseSpider, WorkerSpider
+from .spider import BaseArticleSpider, WorkerSpider
 
 
 class ProxyManagerDM:
@@ -20,7 +20,7 @@ class ProxyManagerDM:
             new.spider_opened, signal=signals.spider_opened)
         return new
 
-    def spider_opened(self, spider: BaseSpider):
+    def spider_opened(self, spider: BaseArticleSpider):
         if not isinstance(spider, WorkerSpider):
             self.enable = spider.enable_proxy
             if self.enable:
@@ -28,7 +28,7 @@ class ProxyManagerDM:
         else:
             self.enable = False
 
-    def process_request(self, request: Request, spider: BaseSpider) \
+    def process_request(self, request: Request, spider: BaseArticleSpider) \
             -> None or Request or Response:
         if self.enable:
             self.proxy_manager.process(request)

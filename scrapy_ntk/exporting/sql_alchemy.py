@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-from .base import BaseArticleItemWriter
+from ..base import BaseArticleItemWriter
 from ..item import (
     FIELDS, MODEL_CLASS_NAME, ArticleItem, STRING_FIELDS,
     DATE_FIELDS

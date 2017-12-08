@@ -8,7 +8,7 @@ import scrapy
 from oauth2client.service_account import \
     ServiceAccountCredentials as Credentials
 
-from .base import BaseArticleItemWriter
+from ..base import BaseArticleItemWriter
 from ..config import cfg
 from ..item import ArticleItem, DATE, URL
 
