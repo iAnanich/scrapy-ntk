@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+from typing import Iterator, Union, Dict, Tuple
 
 from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project
@@ -272,3 +273,76 @@ class SHubInterface(SHub):
         for spider_dict in spiders.list():
             spider = spiders.get(spider_dict['id'])
             yield from self.fetch_week_items(spider)
+
+
+class SHubFetcher:
+
+    def __init__(self, settings: dict):
+        """
+
+        :param settings: see type annotations in `process_settings` method
+        """
+        self.settings = self.process_settings(settings)
+        self.shub = SHub(lazy_mode=True)
+
+    @classmethod
+    def process_settings(cls, settings: dict, ) -> \
+            Dict[str, Dict[int, Dict[str, Dict[str, Tuple[int, frozenset]]]]]:
+        processed = dict()
+        for api_key, projects in settings.items():
+            api_key = str(api_key)
+            projects: dict
+            processed_projects = dict()
+
+            for project_id, spiders in projects.items():
+                project_id = int(project_id)
+                spiders: dict
+                processed_spiders = dict()
+
+                for spider_name, options in spiders.items():
+                    spider_name = str(spider_name)
+                    options: Tuple[int, frozenset]
+
+                    processed_spiders[spider_name] = (
+                        int(options[0]),
+                        frozenset(options[1]),
+                    )
+                processed_projects[project_id] = processed_spiders
+            processed[api_key] = processed_projects
+        return processed
+
+    def latest_spiders_jobkeys(self, count: int, exclude: frozenset) -> Iterator[str]:
+        STATE = 'state'
+        META = 'meta'
+        COUNT = 'count'
+        FINISHED = 'finished'
+        KEY = 'key'
+        CLOSE_REASON = 'close_reason'
+        ITEMS = 'items'
+
+        spider = self.shub.spider
+        for job_summary in spider.jobs.iter(**{
+                    STATE: FINISHED,
+                    META: [KEY, CLOSE_REASON, ITEMS],
+                    COUNT: count,
+                }):
+            key = job_summary[KEY]
+            if job_summary[CLOSE_REASON] != FINISHED:
+                self.shub.logger.error(
+                    f'job with {key} key finished unsuccessfully.')
+            elif job_summary.get(ITEMS, 0) == 0:
+                self.shub.logger.info(
+                    f'job with {key} key has no items.')
+            elif key in exclude:
+                continue
+            else:
+                yield key
+
+    def fetch_jobkeys(self) -> Iterator[dict]:
+        for api_key, projects in self.settings.items():
+            self.shub.switch_client(api_key)
+            for project_id, spiders in projects.items():
+                self.shub.switch_project(project_id)
+                for spider_name, options in spiders.items():
+                    self.shub.switch_spider(spider_name)
+                    yield from self.latest_spiders_jobkeys(*options)
