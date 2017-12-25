@@ -6,10 +6,7 @@ from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from ..config import cfg
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+from ..config import cfg, SCRAPINGHUB_JOBKEY_SEPARATOR
 
 
 class SHub:
@@ -19,14 +16,17 @@ class SHub:
     and uses only it's resources (job history).
     """
 
-    logger = logger
-
-    def __init__(self, *, lazy_mode: bool =False, settings: dict or None =None):
+    def __init__(self, *, lazy_mode: bool =False, settings: dict or None =None,
+                 logger: logging.Logger = None):
         """
         :param lazy_mode: if turned on, lets object to have unset entities. They
         will be set only when needed.
         :param settings: dictionary for `switch` method.
         """
+        if logger is None:
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.DEBUG)
+        self.logger = logger
         self._is_lazy = lazy_mode
 
         # reset client, project and spider to `unset` value
@@ -95,7 +95,9 @@ class SHub:
     def default_spider_name(self) -> str:
         for spider_dict in self.project.spiders.list():
             spider = self.project.spiders.get(spider_dict['id'])
-            if spider.key.split('/')[1] == cfg.current_spider_id:
+            project_id, spider_id, job_num = spider.key.split(
+                SCRAPINGHUB_JOBKEY_SEPARATOR)
+            if spider_id == cfg.current_spider_id:
                 return spider.name
         else:
             raise RuntimeError(f'No spider found with `{id}` ID.')

@@ -85,7 +85,7 @@ class LoggableBase(abc.ABC):
     def create_logger(self, name=None) -> logging.Logger:
         if name is None:
             name = self.name
-        logger = logging.getLogger(self.name)
+        logger = logging.getLogger(name)
         logger.setLevel(logging.DEBUG)
         return logger
 

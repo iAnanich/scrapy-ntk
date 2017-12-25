@@ -7,6 +7,7 @@ from .item import (
     URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
 
+SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
 WEBRANDOMPROXY_URL = 'https://proxy-spider.com/api/proxies.example.txt'
 JOBKEY_DEFAULT = '0/0/0'
 
@@ -121,7 +122,7 @@ class SettingsMaster:
             value = from_args
         else:
             value = JOBKEY_DEFAULT
-        tupl = value.split('/')
+        tupl = value.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
         return {
             'CURRENT_PROJECT_ID': tupl[0],
             'CURRENT_SPIDER_ID': tupl[1],
