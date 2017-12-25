@@ -19,15 +19,24 @@ class SHub:
     and uses only it's resources (job history).
     """
 
-    _logger = logger
+    logger = logger
 
-    _unset_value = None
+    def __init__(self, *, lazy_mode: bool =False, settings: dict or None =None):
+        """
+        :param lazy_mode: if turned on, lets object to have unset entities. They
+        will be set only when needed.
+        :param settings: dictionary for `switch` method.
+        """
+        self._is_lazy = lazy_mode
 
-    def __init__(self, *, stateless=False):
-        self._is_stateless = stateless
+        # reset client, project and spider to `unset` value
+        self.reset_client(stateless=True)
 
-        # call below must start chain `switch_` calls
-        self.switch_client()
+        if settings:
+            self.switch(**settings)
+        elif not lazy_mode:
+            # call below must start chain of `switch_` calls
+            self.switch_client()
 
     @classmethod
     def shortcut_api_key(cls, api_key: str) -> str:
@@ -35,18 +44,18 @@ class SHub:
 
     @property
     def unset(self):
-        return self._unset_value
+        return None
 
     @property
-    def is_stateless(self) -> bool:
-        return self._is_stateless
+    def is_lazy(self) -> bool:
+        return self._is_lazy
 
     @property
     def spider(self) -> Spider:
         spider = self._spider
-        if spider is not None:
+        if spider is not self.unset:
             return spider
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_spider()
         else:
             raise ValueError('`spider` is not set yet.')
@@ -54,9 +63,9 @@ class SHub:
     @property
     def project(self) -> Project:
         project = self._project
-        if project is not None:
+        if project is not self.unset:
             return project
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_project()
         else:
             raise ValueError('`project` is not set yet.')
@@ -64,9 +73,9 @@ class SHub:
     @property
     def client(self) -> ScrapinghubClient:
         client = self._client
-        if client is not None:
+        if client is not self.unset:
             return client
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_client()
         else:
             raise ValueError('`client` is not set yet.')
@@ -97,21 +106,21 @@ class SHub:
     def _switch_spider(self, spider_name: str) -> Spider:
         spider = self.get_spider(spider_name)
         self._spider = spider
-        self._logger.info(
+        self.logger.info(
             f'Spider switched to {spider_name}.')
         return spider
 
     def _switch_project(self, project_id: int) -> Project:
         project = self.get_project(project_id)
         self._project = project
-        self._logger.info(
+        self.logger.info(
             f'Project switched to {project_id}.')
         return project
 
     def _switch_client(self, api_key: str) -> ScrapinghubClient:
         client = self.get_client(api_key)
         self._client = client
-        self._logger.info(
+        self.logger.info(
             f'Client switched by {self.shortcut_api_key(api_key)} API key.')
         return client
 
@@ -146,25 +155,33 @@ class SHub:
         self.reset_project()
         return client
 
+    def switch(self, **kwargs):
+        if 'api_key' in kwargs:
+            self.switch_client(kwargs['api_key'])
+        if 'project_id' in kwargs:
+            self.switch_project(kwargs['project_id'])
+        if 'spider_name' in kwargs:
+            self.switch_spider(kwargs['spider_name'])
+
     """
     `reset_*` methods checks `stateless` mode and if so - calls `drop_*` method
     else - calls `switch_` methods with `None` as only argument, which means
     to switch to default value.
     """
     def reset_spider(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_spider()
         else:
             self.switch_spider(None)
 
     def reset_project(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_project()
         else:
             self.switch_project(None)
 
     def reset_client(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_client()
         else:
             self.switch_client(None)
@@ -173,16 +190,16 @@ class SHub:
     `_drop_*` methods sets entity to `_unset_value` and logs it.
     """
     def _drop_spider(self):
-        self._spider = self._unset_value
-        self._logger.info(f'Spider dropped.')
+        self._spider = self.unset
+        self.logger.info(f'Spider dropped.')
 
     def _drop_project(self):
-        self._project = self._unset_value
-        self._logger.info(f'Project dropped.')
+        self._project = self.unset
+        self.logger.info(f'Project dropped.')
 
     def _drop_client(self):
-        self._client = self._unset_value
-        self._logger.info(f'Client dropped.')
+        self._client = self.unset
+        self.logger.info(f'Client dropped.')
 
     """
     `drop_*` methods must call `_drop_*` method and reset entities
