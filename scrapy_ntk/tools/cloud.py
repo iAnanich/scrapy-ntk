@@ -1,7 +1,7 @@
 import datetime
 import logging
 import time
-from typing import Iterator, Tuple, Dict, FrozenSet, List
+from typing import Iterator, Tuple, Dict, List
 
 from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project
@@ -27,8 +27,9 @@ def spider_id_to_name(spider_id: int, project: Project) -> str:
 
 
 def split_jobkey(jobkey: str) -> Tuple[int, int, int]:
-    tupl = project_id, spider_id, job_num = jobkey.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
-    return tupl
+    lst = jobkey.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
+    project_id, spider_id, job_num = [int(s) for s in lst]
+    return project_id, spider_id, job_num
 
 
 class SHub:
@@ -297,61 +298,68 @@ class SHubInterface(SHub):
 
 class SHubFetcher:
 
-    def __init__(self, settings: Dict[str, Dict[int, Dict[str, Iterator[str]]]],
-                 maximum_excluded_matches: int =3):
+    def __init__(self, settings: Dict[str, Dict[int, Dict[str, Iterator[int]]]],
+                 maximum_excluded_matches: int =2):
         """
-        >>> f = SHubFetcher(
-        ...     settings={
-        ...         'your 32 char API key': {
-        ...             274629: {
-        ...                 'your spiders name': {'300', '301', '305'}
-        ...             }
-        ...         }
-        ...     },
-        ...     maximum_excluded_matches=2, )
-        >>> list(f.fetch_jobkeys())
-        ...['274629/1/306',
-        ... '274629/1/304',
-        ... '274629/1/303',
-        ... '274629/1/302',]
-        :param settings: see type annotations in `process_settings` method
-        :param maximum_excluded_matches: how many jobkeys must from exclude must
-         be matched to stop iteration
+        For example you have `1234567887654321123567887654321` API key, `274629`
+        project ID and `spider001` spider with `1` ID:
+            >>> f = SHubFetcher(
+            ...     settings={
+            ...         'your 32 char API key': {
+            ...             274629: {
+            ...                 'spider001': (x for x in [305, 301, 300]),
+            ...             }
+            ...         }
+            ...     },
+            ...     maximum_excluded_matches=2, )
+            >>> list(f.fetch_jobkeys())
+            ...['274629/1/306',
+            ... '274629/1/304',
+            ... '274629/1/303',
+            ... '274629/1/302',]
+
+        :param settings: see example above
+        :param maximum_excluded_matches: how many jobnums (last digit from job
+        key) from exclude must be matched to stop iteration
         """
         self.settings = self.process_settings(settings)
         self.shub = SHub(lazy_mode=True)
         self.maximum_excluded_matches = maximum_excluded_matches
 
     @classmethod
-    def process_settings(cls, settings: Dict[str, Dict[int, Dict[str, Iterator[str]]]]) -> \
-            Tuple[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, FrozenSet[str]]]]]]]:
-        processed: List[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, FrozenSet[str]]]]]]] = list()
+    def process_settings(cls, settings: Dict[str, Dict[int, Dict[str, Iterator[int]]]]) -> \
+            Tuple[
+                Tuple[str, Tuple[                    # API key
+                    Tuple[int, Tuple[                # Project ID
+                        Tuple[str, Iterator[int]]    # Spider name, iterator
+                    ]]
+                ]]
+            ]:
+        processed: List[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = list()
 
         for api_key, projects in settings.items():
             api_key = str(api_key)
-            processed_projects: List[Tuple[int, Tuple[Tuple[str, FrozenSet[str]]]]] = list()
+            processed_projects: List[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = list()
 
             for project_id, spiders in projects.items():
                 project_id = int(project_id)
-                processed_spiders: List[Tuple[str, FrozenSet[str]]] = list()
+                processed_spiders: List[Tuple[str, Iterator[int]]] = list()
 
-                for spider_name, exclude_jobnums in spiders.items():
-                    spider_name = str(spider_name)
-
+                for spider_name, exclude_iterator in spiders.items():
                     processed_spiders.append(
-                        (spider_name, frozenset(exclude_jobnums), ))
+                        (str(spider_name), exclude_iterator, ))
 
-                processed_spiders: Tuple[Tuple[str, FrozenSet[str]]] = tuple(processed_spiders)
+                processed_spiders: Tuple[Tuple[str, Iterator[int]]] = tuple(processed_spiders)
                 processed_projects.append((project_id, processed_spiders, ))
 
-            processed_projects: Tuple[Tuple[int, Tuple[Tuple[str, FrozenSet[str]]]]] = tuple(processed_projects)
-            processed.append((api_key, tuple(processed_projects), ))
+            processed_projects: Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = tuple(processed_projects)
+            processed.append((api_key, processed_projects, ))
 
-        processed: Tuple[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, FrozenSet[str]]]]]]] = tuple(processed)
+        processed: Tuple[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = tuple(processed)
         return processed
 
     def latest_spiders_jobkeys(self, spider: Spider,
-                               exclude: frozenset) -> Iterator[str]:
+                               exclude_iterator: Iterator[int]) -> Iterator[str]:
         STATE = 'state'
         META = 'meta'
         FINISHED = 'finished'
@@ -359,24 +367,34 @@ class SHubFetcher:
         CLOSE_REASON = 'close_reason'
         ITEMS = 'items'
 
+        def next_excluded():
+            return int(next(exclude_iterator))
+
+        # Save first excluded job number
+        exclude = next_excluded()
         excluded_counter = 0
+
         for job_summary in spider.jobs.iter(**{
                     STATE: FINISHED,
                     META: [KEY, CLOSE_REASON, ITEMS],
                 }):
             key = job_summary[KEY]
-            *_, job_num = split_jobkey(key)
+            job_num = int(split_jobkey(key)[-1])
+
             if job_summary[CLOSE_REASON] != FINISHED:
                 self.shub.logger.error(
                     f'job with {key} key finished unsuccessfully.')
             elif job_summary.get(ITEMS, 0) == 0:
                 self.shub.logger.info(
                     f'job with {key} key has no items.')
-            elif job_num in exclude:
+            elif job_num == exclude:
                 excluded_counter += 1
                 if excluded_counter == self.maximum_excluded_matches:
+                    self.shub.logger.info(f'Stopped on {job_num}th job.')
                     break
+                exclude = next_excluded()
             else:
+                excluded_counter = 0
                 yield key
 
     def fetch_jobkeys(self) -> Iterator[dict]:
