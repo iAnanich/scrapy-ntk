@@ -1,14 +1,14 @@
 import datetime
 import logging
 import time
-from typing import Iterator, Iterable, Tuple, Dict, List
+from typing import Iterator, Iterable, Tuple, Dict, List, Union, NewType
 
 from scrapinghub import ScrapinghubClient
+from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
 from ..config import cfg, SCRAPINGHUB_JOBKEY_SEPARATOR
-
 
 STATE = 'state'
 META = 'meta'
@@ -311,27 +311,47 @@ class SHubInterface(SHub):
             yield from self.fetch_week_items(spider)
 
 
+JobNumIter = Iterator[int]
+JobKeyIter = Iterator[str]
+
+SettingsInputType = Dict[
+    str,                    # API key
+    Dict[
+        int,                # Project ID
+        Dict[
+            Union[str, int],            # Spider name or ID
+            Iterable[int]   # Iterable over excluded job numbers
+        ]
+    ]
+]
+SpidersTuple = Tuple[
+    Tuple[Spider, JobNumIter]
+]
+ProjectsTuple = Tuple[
+    Tuple[Project, SpidersTuple]
+]
+ProcessedSettingsType = ClientsTuple = Tuple[
+    Tuple[ScrapinghubClient, ProjectsTuple]
+]
+
+
 class SHubFetcher:
 
-    def __init__(self, settings: Dict[str, Dict[int, Dict[str, Iterable[int]]]],
-                 maximum_excluded_matches: int =2, *, shub: SHub=None):
+    def __init__(self, settings: SettingsInputType, *,
+                 maximum_excluded_matches: int =2, logger: logging.Logger=None):
         """
         For example you have `1234567887654321123567887654321` API key, `274629`
         project ID and `spider001` spider with `1` ID:
             >>> f = SHubFetcher(
             ...     settings={
-            ...         'your 32 char API key': {
+            ...         'your_32_char_API_key': {
             ...             274629: {
-            ...                 'spider001': (x for x in [305, 301, 300]),
+            ...                 'spider_number_1': (x for x in [305, 301, 300]),
             ...             }
             ...         }
             ...     },
             ...     maximum_excluded_matches=2, )
-            >>> list(f.fetch_jobkeys())
-            ...['274629/1/306',
-            ... '274629/1/304',
-            ... '274629/1/303',
-            ... '274629/1/302',]
+            >>> f.fetch_jobs()
 
         :param settings: see example above
         :param maximum_excluded_matches: how many jobnums (last digit from job
@@ -339,47 +359,69 @@ class SHubFetcher:
         """
         self.settings = self.process_settings(settings)
         self.maximum_excluded_matches = maximum_excluded_matches
-        if shub is None:
-            self.shub = SHub(lazy_mode=True)
-        elif isinstance(shub, SHub):
-            self.shub = shub
-        else:
-            TypeError('`shub` argument must be instance of `SHub` class')
+
+        if logger is None:
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.DEBUG)
+        self.logger = logger
 
     @classmethod
-    def process_settings(cls, settings: Dict[str, Dict[int, Dict[str, Iterable[int]]]]) -> \
-            Tuple[
-                Tuple[str, Tuple[                    # API key
-                    Tuple[int, Tuple[                # Project ID
-                        Tuple[str, Iterable[int]]    # Spider name, iterable
-                    ]]
-                ]]
-            ]:
-        processed: List[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = list()
+    def new_helper(cls):
+        logger = logging.getLogger('SHubFetcher: SHub helper')
+        logger.setLevel(logging.ERROR)
+        shub = SHub(lazy_mode=True, logger=logger)
+        return shub
+
+    @classmethod
+    def process_settings(cls, settings: SettingsInputType) -> ProcessedSettingsType:
+        helper = cls.new_helper()
+        processed: List[Tuple[ScrapinghubClient, ProjectsTuple]] = list()
 
         for api_key, projects in settings.items():
-            api_key = str(api_key)
-            processed_projects: List[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = list()
+            if not isinstance(api_key, str):
+                raise TypeError(
+                    f'API key must a string, got {type(api_key)} instead.')
+            helper.switch_client(api_key)
+            processed_projects: List[Tuple[Project, SpidersTuple]] = list()
 
             for project_id, spiders in projects.items():
-                project_id = int(project_id)
-                processed_spiders: List[Tuple[str, Iterator[int]]] = list()
+                if not isinstance(project_id, int):
+                    raise TypeError(
+                        f'project ID must an integer, '
+                        f'got {type(project_id)} instead.')
+                helper.switch_project(project_id)
+                processed_spiders: List[Tuple[Spider, Iterator[int]]] = list()
 
-                for spider_name, exclude_iterable in spiders.items():
-                    processed_spiders.append(
-                        (str(spider_name), iter(exclude_iterable), ))
+                for spider_name_or_id, exclude_iterable in spiders.items():
+                    if isinstance(spider_name_or_id, str):
+                        spider_name = spider_name_or_id
+                    elif isinstance(spider_name_or_id, int):
+                        spider_name = spider_id_to_name(
+                            spider_name_or_id, helper.project)
+                    else:
+                        raise TypeError(
+                            f'Spider name or ID must a string or an integer, '
+                            f'got {type(spider_name_or_id)} instead.')
+                    # process spider name or ID
+                    helper.switch_spider(spider_name)
+                    # process exclude
+                    exclude_list = [int(i) for i in exclude_iterable]  # type-check
+                    exclude_list.sort(reverse=True)  # sort, to get bigger numbers first
+                    exclude_iterator = iter(exclude_list)
 
-                processed_spiders: Tuple[Tuple[str, Iterator[int]]] = tuple(processed_spiders)
-                processed_projects.append((project_id, processed_spiders, ))
+                    processed_spiders.append((helper.spider, exclude_iterator, ))
 
-            processed_projects: Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = tuple(processed_projects)
-            processed.append((api_key, processed_projects, ))
+                processed_spiders: SpidersTuple = tuple(processed_spiders)
+                processed_projects.append((helper.project, processed_spiders, ))
 
-        processed: Tuple[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = tuple(processed)
+            processed_projects: ProjectsTuple = tuple(processed_projects)
+            processed.append((helper.client, processed_projects, ))
+
+        processed: ClientsTuple = tuple(processed)
         return processed
 
     def latest_spiders_jobkeys(self, spider: Spider,
-                               exclude_iterator: Iterator[int]) -> Iterator[str]:
+                               exclude_iterator: JobNumIter) -> JobKeyIter:
         completed = False
         excluded_counter = 0
 
@@ -397,25 +439,26 @@ class SHubFetcher:
             job_num = int(split_jobkey(key)[-1])
 
             if job_summary[CLOSE_REASON] != FINISHED:
-                self.shub.logger.error(
+                self.logger.error(
                     f'job with {key} key finished unsuccessfully.')
             elif job_summary.get(ITEMS, 0) == 0:
-                self.shub.logger.info(
+                self.logger.info(
                     f'job with {key} key has no items.')
             elif in_excluded(job_num):
                 excluded_counter += 1
                 if excluded_counter == self.maximum_excluded_matches:
-                    self.shub.logger.info(f'Stopped on {job_num}th job.')
+                    self.logger.info(f'Stopped on {job_num}th job.')
                     break
             else:
                 excluded_counter = 0
                 yield key
 
-    def fetch_jobkeys(self) -> Iterator[str]:
-        for api_key, projects in self.settings:
-            client = self.shub.switch_client(api_key)
-            for project_id, spiders in projects:
-                project = self.shub.switch_project(project_id)
-                for spider_name, exclude in spiders:
-                    spider = self.shub.switch_spider(spider_name)
-                    yield from self.latest_spiders_jobkeys(spider, exclude)
+    def iter_spider_exclude_tuple(self) -> Tuple[Spider, JobNumIter]:
+        for client, projects in self.settings:
+            for project, spiders in projects:
+                yield from spiders
+
+    def fetch_jobkeys(self) -> JobKeyIter:
+        for spider, exclude in self.iter_spider_exclude_tuple():
+            yield from self.latest_spiders_jobkeys(spider, exclude)
+
