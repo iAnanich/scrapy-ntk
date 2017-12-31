@@ -313,6 +313,9 @@ class SHubInterface(SHub):
 
 JobNumIter = Iterator[int]
 JobKeyIter = Iterator[str]
+JobIter = Iterator[Job]
+ItemIter = Iterator[dict]
+LogIter = Iterator[dict]
 
 SettingsInputType = Dict[
     str,                    # API key
@@ -453,12 +456,45 @@ class SHubFetcher:
                 excluded_counter = 0
                 yield key
 
+    def latest_spiders_jobs(self, spider: Spider,
+                            exclude_iterator: JobNumIter) -> JobIter:
+        for jobkey in self.latest_spiders_jobkeys(spider, exclude_iterator):
+            yield spider.jobs.get(job_key=jobkey)
+
     def iter_spider_exclude_tuple(self) -> Tuple[Spider, JobNumIter]:
         for client, projects in self.settings:
             for project, spiders in projects:
                 yield from spiders
 
+    def fetch_jobs(self) -> JobIter:
+        for spider, exclude in self.iter_spider_exclude_tuple():
+            yield from self.latest_spiders_jobs(spider, exclude)
+
     def fetch_jobkeys(self) -> JobKeyIter:
         for spider, exclude in self.iter_spider_exclude_tuple():
             yield from self.latest_spiders_jobkeys(spider, exclude)
 
+    def fetch_items(self) -> ItemIter:
+        for job in self.fetch_jobs():
+            yield from job.items.iter()
+
+    def fetch_logs(self) -> LogIter:
+        for job in self.fetch_jobs():
+            yield from job.logs.iter()
+
+    def fetch(self, *, jobkey=False, job=False, items=False, logs=False) -> Iterator[dict]:
+        if not any([job, jobkey, items, logs]):
+            raise ValueError
+
+        for job_obj in self.fetch_jobs():
+            job_obj: Job
+            result = dict()
+            if jobkey:
+                result['jobkey'] = job_obj.key
+            if job:
+                result['job'] = job_obj
+            if items:
+                result['items'] = job_obj.items
+            if logs:
+                result['logs'] = job_obj.logs
+            yield result
