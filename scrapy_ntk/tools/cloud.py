@@ -1,15 +1,50 @@
 import datetime
 import logging
 import time
+from typing import Iterator, Iterable, Tuple, Dict, List
 
 from scrapinghub import ScrapinghubClient
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from ..config import cfg
+from ..config import cfg, SCRAPINGHUB_JOBKEY_SEPARATOR
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+
+STATE = 'state'
+META = 'meta'
+FINISHED = 'finished'
+KEY = 'key'
+CLOSE_REASON = 'close_reason'
+ITEMS = 'items'
+
+
+def iter_job_summaries(spider: Spider):
+    yield from spider.jobs.iter(**{
+        STATE: FINISHED,
+        META: [KEY, CLOSE_REASON, ITEMS],
+    })
+
+
+def spider_name_to_id(spider_name: str, project: Project) -> int:
+    spider: Spider = project.spiders.get(spider_name)
+    project_id, spider_id = spider.key.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
+    return spider_id
+
+
+def spider_id_to_name(spider_id: int, project: Project) -> str:
+    for spider_dict in project.spiders.list():
+        name = spider_dict['id']
+        spider: Spider = project.spiders.get(name)
+        if spider_id == spider.key.split(SCRAPINGHUB_JOBKEY_SEPARATOR)[1]:
+            return name
+    else:
+        raise ValueError(f'No such spider with {spider_id} ID found')
+
+
+def split_jobkey(jobkey: str) -> Tuple[int, int, int]:
+    lst = jobkey.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
+    project_id, spider_id, job_num = [int(s) for s in lst]
+    return project_id, spider_id, job_num
 
 
 class SHub:
@@ -19,15 +54,27 @@ class SHub:
     and uses only it's resources (job history).
     """
 
-    _logger = logger
+    def __init__(self, *, lazy_mode: bool =False, settings: dict or None =None,
+                 logger: logging.Logger = None):
+        """
+        :param lazy_mode: if turned on, lets object to have unset entities. They
+        will be set only when needed.
+        :param settings: dictionary for `switch` method.
+        """
+        if logger is None:
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.DEBUG)
+        self.logger = logger
+        self._is_lazy = lazy_mode
 
-    _unset_value = None
+        # reset client, project and spider to `unset` value
+        self.reset_client(stateless=True)
 
-    def __init__(self, *, stateless=False):
-        self._is_stateless = stateless
-
-        # call below must start chain `switch_` calls
-        self.switch_client()
+        if settings:
+            self.switch(**settings)
+        elif not lazy_mode:
+            # call below must start chain of `switch_` calls
+            self.switch_client()
 
     @classmethod
     def shortcut_api_key(cls, api_key: str) -> str:
@@ -35,18 +82,18 @@ class SHub:
 
     @property
     def unset(self):
-        return self._unset_value
+        return None
 
     @property
-    def is_stateless(self) -> bool:
-        return self._is_stateless
+    def is_lazy(self) -> bool:
+        return self._is_lazy
 
     @property
     def spider(self) -> Spider:
         spider = self._spider
-        if spider is not None:
+        if spider is not self.unset:
             return spider
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_spider()
         else:
             raise ValueError('`spider` is not set yet.')
@@ -54,9 +101,9 @@ class SHub:
     @property
     def project(self) -> Project:
         project = self._project
-        if project is not None:
+        if project is not self.unset:
             return project
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_project()
         else:
             raise ValueError('`project` is not set yet.')
@@ -64,9 +111,9 @@ class SHub:
     @property
     def client(self) -> ScrapinghubClient:
         client = self._client
-        if client is not None:
+        if client is not self.unset:
             return client
-        elif not self._is_stateless:
+        elif not self._is_lazy:
             return self.switch_client()
         else:
             raise ValueError('`client` is not set yet.')
@@ -85,9 +132,10 @@ class SHub:
     @property
     def default_spider_name(self) -> str:
         for spider_dict in self.project.spiders.list():
-            spider = self.project.spiders.get(spider_dict['id'])
-            if spider.key.split('/')[1] == cfg.current_spider_id:
-                return spider.name
+            spider_name = spider_dict['id']
+            spider_id = spider_name_to_id(spider_name, self.project)
+            if spider_id == cfg.current_spider_id:
+                return spider_name
         else:
             raise RuntimeError(f'No spider found with `{id}` ID.')
 
@@ -97,21 +145,21 @@ class SHub:
     def _switch_spider(self, spider_name: str) -> Spider:
         spider = self.get_spider(spider_name)
         self._spider = spider
-        self._logger.info(
+        self.logger.info(
             f'Spider switched to {spider_name}.')
         return spider
 
     def _switch_project(self, project_id: int) -> Project:
         project = self.get_project(project_id)
         self._project = project
-        self._logger.info(
+        self.logger.info(
             f'Project switched to {project_id}.')
         return project
 
     def _switch_client(self, api_key: str) -> ScrapinghubClient:
         client = self.get_client(api_key)
         self._client = client
-        self._logger.info(
+        self.logger.info(
             f'Client switched by {self.shortcut_api_key(api_key)} API key.')
         return client
 
@@ -146,25 +194,33 @@ class SHub:
         self.reset_project()
         return client
 
+    def switch(self, **kwargs):
+        if 'api_key' in kwargs:
+            self.switch_client(kwargs['api_key'])
+        if 'project_id' in kwargs:
+            self.switch_project(kwargs['project_id'])
+        if 'spider_name' in kwargs:
+            self.switch_spider(kwargs['spider_name'])
+
     """
     `reset_*` methods checks `stateless` mode and if so - calls `drop_*` method
     else - calls `switch_` methods with `None` as only argument, which means
     to switch to default value.
     """
     def reset_spider(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_spider()
         else:
             self.switch_spider(None)
 
     def reset_project(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_project()
         else:
             self.switch_project(None)
 
     def reset_client(self, stateless: bool =False):
-        if self._is_stateless or stateless:
+        if self._is_lazy or stateless:
             self.drop_client()
         else:
             self.switch_client(None)
@@ -173,16 +229,16 @@ class SHub:
     `_drop_*` methods sets entity to `_unset_value` and logs it.
     """
     def _drop_spider(self):
-        self._spider = self._unset_value
-        self._logger.info(f'Spider dropped.')
+        self._spider = self.unset
+        self.logger.info(f'Spider dropped.')
 
     def _drop_project(self):
-        self._project = self._unset_value
-        self._logger.info(f'Project dropped.')
+        self._project = self.unset
+        self.logger.info(f'Project dropped.')
 
     def _drop_client(self):
-        self._client = self._unset_value
-        self._logger.info(f'Client dropped.')
+        self._client = self.unset
+        self.logger.info(f'Client dropped.')
 
     """
     `drop_*` methods must call `_drop_*` method and reset entities
@@ -253,3 +309,113 @@ class SHubInterface(SHub):
         for spider_dict in spiders.list():
             spider = spiders.get(spider_dict['id'])
             yield from self.fetch_week_items(spider)
+
+
+class SHubFetcher:
+
+    def __init__(self, settings: Dict[str, Dict[int, Dict[str, Iterable[int]]]],
+                 maximum_excluded_matches: int =2, *, shub: SHub=None):
+        """
+        For example you have `1234567887654321123567887654321` API key, `274629`
+        project ID and `spider001` spider with `1` ID:
+            >>> f = SHubFetcher(
+            ...     settings={
+            ...         'your 32 char API key': {
+            ...             274629: {
+            ...                 'spider001': (x for x in [305, 301, 300]),
+            ...             }
+            ...         }
+            ...     },
+            ...     maximum_excluded_matches=2, )
+            >>> list(f.fetch_jobkeys())
+            ...['274629/1/306',
+            ... '274629/1/304',
+            ... '274629/1/303',
+            ... '274629/1/302',]
+
+        :param settings: see example above
+        :param maximum_excluded_matches: how many jobnums (last digit from job
+        key) from exclude must be matched to stop iteration
+        """
+        self.settings = self.process_settings(settings)
+        self.maximum_excluded_matches = maximum_excluded_matches
+        if shub is None:
+            self.shub = SHub(lazy_mode=True)
+        elif isinstance(shub, SHub):
+            self.shub = shub
+        else:
+            TypeError('`shub` argument must be instance of `SHub` class')
+
+    @classmethod
+    def process_settings(cls, settings: Dict[str, Dict[int, Dict[str, Iterable[int]]]]) -> \
+            Tuple[
+                Tuple[str, Tuple[                    # API key
+                    Tuple[int, Tuple[                # Project ID
+                        Tuple[str, Iterable[int]]    # Spider name, iterable
+                    ]]
+                ]]
+            ]:
+        processed: List[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = list()
+
+        for api_key, projects in settings.items():
+            api_key = str(api_key)
+            processed_projects: List[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = list()
+
+            for project_id, spiders in projects.items():
+                project_id = int(project_id)
+                processed_spiders: List[Tuple[str, Iterator[int]]] = list()
+
+                for spider_name, exclude_iterable in spiders.items():
+                    processed_spiders.append(
+                        (str(spider_name), iter(exclude_iterable), ))
+
+                processed_spiders: Tuple[Tuple[str, Iterator[int]]] = tuple(processed_spiders)
+                processed_projects.append((project_id, processed_spiders, ))
+
+            processed_projects: Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]] = tuple(processed_projects)
+            processed.append((api_key, processed_projects, ))
+
+        processed: Tuple[Tuple[str, Tuple[Tuple[int, Tuple[Tuple[str, Iterator[int]]]]]]] = tuple(processed)
+        return processed
+
+    def latest_spiders_jobkeys(self, spider: Spider,
+                               exclude_iterator: Iterator[int]) -> Iterator[str]:
+        completed = False
+        excluded_counter = 0
+
+        def in_excluded(job_num: int) -> True:
+            nonlocal completed
+            if not completed:
+                try:
+                    return job_num == next(exclude_iterator)
+                except StopIteration:
+                    completed = True
+            return False
+
+        for job_summary in iter_job_summaries(spider):
+            key = job_summary[KEY]
+            job_num = int(split_jobkey(key)[-1])
+
+            if job_summary[CLOSE_REASON] != FINISHED:
+                self.shub.logger.error(
+                    f'job with {key} key finished unsuccessfully.')
+            elif job_summary.get(ITEMS, 0) == 0:
+                self.shub.logger.info(
+                    f'job with {key} key has no items.')
+            elif in_excluded(job_num):
+                excluded_counter += 1
+                if excluded_counter == self.maximum_excluded_matches:
+                    self.shub.logger.info(f'Stopped on {job_num}th job.')
+                    break
+            else:
+                excluded_counter = 0
+                yield key
+
+    def fetch_jobkeys(self) -> Iterator[str]:
+        for api_key, projects in self.settings:
+            client = self.shub.switch_client(api_key)
+            for project_id, spiders in projects:
+                project = self.shub.switch_project(project_id)
+                for spider_name, exclude in spiders:
+                    spider = self.shub.switch_spider(spider_name)
+                    yield from self.latest_spiders_jobkeys(spider, exclude)
