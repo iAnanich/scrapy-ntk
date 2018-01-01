@@ -1,9 +1,9 @@
 import datetime
 import logging
 import time
-from typing import Iterator, Iterable, Tuple, Dict, List, Union, NewType
+from typing import Iterator, Iterable, Tuple, Dict, List, Union
 
-from scrapinghub import ScrapinghubClient
+from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
@@ -16,6 +16,18 @@ FINISHED = 'finished'
 KEY = 'key'
 CLOSE_REASON = 'close_reason'
 ITEMS = 'items'
+
+
+def shortcut_api_key(api_key: str, margin: int =4) -> str:
+    """
+    Hides most of the API key for security reasons.
+    :param api_key: string representing API key.
+    :param margin: number of characters of the given `api_key` string to show on
+    the start and the end.
+    :return: shortcut API key
+    """
+    middle = '\u2026'
+    return f'{api_key[:margin]}{middle}{api_key[-margin:]}'
 
 
 def iter_job_summaries(spider: Spider):
@@ -80,6 +92,8 @@ class SHub:
     def shortcut_api_key(cls, api_key: str) -> str:
         return f'{api_key[:4]}\u2026{api_key[-4:]}'
 
+    shortcut_api_key = staticmethod(shortcut_api_key)
+
     @property
     def unset(self):
         return None
@@ -88,6 +102,10 @@ class SHub:
     def is_lazy(self) -> bool:
         return self._is_lazy
 
+    """
+    Entity properties, that returns instances of `scrapinghub` library's
+    `Spider`, `Project`, `Client` classes. 
+    """
     @property
     def spider(self) -> Spider:
         spider = self._spider
@@ -109,7 +127,7 @@ class SHub:
             raise ValueError('`project` is not set yet.')
 
     @property
-    def client(self) -> ScrapinghubClient:
+    def client(self) -> Client:
         client = self._client
         if client is not self.unset:
             return client
@@ -156,7 +174,7 @@ class SHub:
             f'Project switched to {project_id}.')
         return project
 
-    def _switch_client(self, api_key: str) -> ScrapinghubClient:
+    def _switch_client(self, api_key: str) -> Client:
         client = self.get_client(api_key)
         self._client = client
         self.logger.info(
@@ -187,7 +205,7 @@ class SHub:
         self.reset_spider()
         return project
 
-    def switch_client(self, api_key: str or None =None) -> ScrapinghubClient:
+    def switch_client(self, api_key: str or None =None) -> Client:
         if api_key is None:
             api_key = self.default_api_key
         client = self._switch_client(api_key)
@@ -265,8 +283,8 @@ class SHub:
     def get_project(self, project_id: int) -> Project:
         return self.client.get_project(int(project_id))
 
-    def get_client(self, api_key: str) -> ScrapinghubClient:
-        return ScrapinghubClient(str(api_key))
+    def get_client(self, api_key: str) -> Client:
+        return Client(str(api_key))
 
 
 class SHubInterface(SHub):
@@ -334,7 +352,7 @@ ProjectsTuple = Tuple[
     Tuple[Project, SpidersTuple]
 ]
 ProcessedSettingsType = ClientsTuple = Tuple[
-    Tuple[ScrapinghubClient, ProjectsTuple]
+    Tuple[Client, ProjectsTuple]
 ]
 
 
@@ -378,7 +396,7 @@ class SHubFetcher:
     @classmethod
     def process_settings(cls, settings: SettingsInputType) -> ProcessedSettingsType:
         helper = cls.new_helper()
-        processed: List[Tuple[ScrapinghubClient, ProjectsTuple]] = list()
+        processed: List[Tuple[Client, ProjectsTuple]] = list()
 
         for api_key, projects in settings.items():
             if not isinstance(api_key, str):
