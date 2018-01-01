@@ -2,6 +2,7 @@ import datetime
 import logging
 import time
 from typing import Iterator, Iterable, Tuple, Dict, List, Union
+import types
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.jobs import Job
@@ -336,12 +337,12 @@ ItemIter = Iterator[dict]
 LogIter = Iterator[dict]
 
 SettingsInputType = Dict[
-    str,                    # API key
+    str,                      # API key
     Dict[
-        int,                # Project ID
+        int,                  # Project ID
         Dict[
-            Union[str, int],            # Spider name or ID
-            Iterable[int]   # Iterable over excluded job numbers
+            Union[str, int],  # Spider name or ID
+            Iterable[int],    # Iterable over excluded job numbers
         ]
     ]
 ]
@@ -356,10 +357,67 @@ ProcessedSettingsType = ClientsTuple = Tuple[
 ]
 
 
+class CounterWithThreshold:
+
+    @classmethod
+    def check_threshold(cls, threshold: int or None):
+        if threshold is None:
+            pass
+        elif isinstance(threshold, int):
+            if threshold <= 0:
+                raise TypeError('threshold greater then zero.')
+        else:
+            raise TypeError('threshold must be of type `int` or `NoneType`')
+
+    def __init__(self, threshold: int or None = None):
+        self.check_threshold(threshold)
+        if threshold is None:
+            self._do_check = False
+        elif isinstance(threshold, int):
+            self._do_check = True
+            self._threshold = threshold
+            self._count = 0
+        else:
+            raise TypeError
+
+    def add(self) -> bool:
+        if self._do_check:
+            self._count += 1
+            return self._count == self._threshold
+        else:
+            return False
+
+    def drop(self):
+        if self._do_check:
+            self._count = 0
+
+
+class ExcludeIterChecker:
+
+    def __init__(self, exclude_iterator: Iterator):
+        if isinstance(exclude_iterator, types.Iterator):
+            self._iterator = exclude_iterator
+        else:
+            raise TypeError
+        self._completed = False
+
+    def check_next(self, value):
+        if not self._completed:
+            try:
+                next_value = next(self._iterator)
+            except StopIteration:
+                self._completed = True
+            else:
+                return value == next_value
+        return False
+
+
 class SHubFetcher:
 
     def __init__(self, settings: SettingsInputType, *,
-                 maximum_excluded_matches: int =2, logger: logging.Logger=None):
+                 maximum_fetched_jobs: int or None =None,
+                 maximum_excluded_matches: int or None =None,
+                 logger: logging.Logger=None):
         """
         For example you have `1234567887654321123567887654321` API key, `274629`
         project ID and `spider001` spider with `1` ID:
@@ -374,17 +432,27 @@ class SHubFetcher:
             ...     maximum_excluded_matches=2, )
             >>> f.fetch_jobs()
 
-        :param settings: see example above
-        :param maximum_excluded_matches: how many jobnums (last digit from job
-        key) from exclude must be matched to stop iteration
+        :param settings: see `SettingsInputType`
+        :param maximum_excluded_matches: how many job's numbers (last digit from
+         job key) from exclude must be matched to stop iteration
         """
-        self.settings = self.process_settings(settings)
-        self.maximum_excluded_matches = maximum_excluded_matches
-
         if logger is None:
             logger = logging.getLogger(__name__)
             logger.setLevel(logging.DEBUG)
         self.logger = logger
+
+        # check input here, before any progress
+        try:
+            CounterWithThreshold.check_threshold(maximum_fetched_jobs)
+            CounterWithThreshold.check_threshold(maximum_excluded_matches)
+        except TypeError as exc:
+            self.logger.exception(f'Wrong `maximum_*` type.: {str(exc)}')
+            raise
+
+        self.maximum_excluded_matches = maximum_excluded_matches
+        self.maximum_fetched_jobs = maximum_fetched_jobs
+
+        self.settings = self.process_settings(settings)
 
     @classmethod
     def new_helper(cls):
@@ -441,38 +509,52 @@ class SHubFetcher:
         processed: ClientsTuple = tuple(processed)
         return processed
 
+    iter_job_summaries = staticmethod(iter_job_summaries)
+
     def latest_spiders_jobkeys(self, spider: Spider,
                                exclude_iterator: JobNumIter) -> JobKeyIter:
-        completed = False
-        excluded_counter = 0
+        """
+        Fetches latest jobs of the given spider, and yields their keys.
+        :param spider: `Spider` instance
+        :param exclude_iterator: object that yields job's numbers, that you do
+        not want to get from this method
+        :return: iterator that yields job's numbers
+        """
+        fetched_jobs_counter = CounterWithThreshold(
+            threshold=self.maximum_fetched_jobs)
+        excluded_jobs_counter = CounterWithThreshold(
+            threshold=self.maximum_excluded_matches)
+        exclude_iter_checker = ExcludeIterChecker(exclude_iterator)
 
-        def in_excluded(job_num: int) -> True:
-            nonlocal completed
-            if not completed:
-                try:
-                    return job_num == next(exclude_iterator)
-                except StopIteration:
-                    completed = True
-            return False
+        self.logger.info(f'Start fetching jobs for {spider.key} spider.')
 
-        for job_summary in iter_job_summaries(spider):
+        for job_summary in self.iter_job_summaries(spider):
             key = job_summary[KEY]
             job_num = int(split_jobkey(key)[-1])
 
+            # Job processing logic
             if job_summary[CLOSE_REASON] != FINISHED:
                 self.logger.error(
                     f'job with {key} key finished unsuccessfully.')
             elif job_summary.get(ITEMS, 0) == 0:
                 self.logger.info(
                     f'job with {key} key has no items.')
-            elif in_excluded(job_num):
-                excluded_counter += 1
-                if excluded_counter == self.maximum_excluded_matches:
-                    self.logger.info(f'Stopped on {job_num}th job.')
+            elif exclude_iter_checker.check_next(job_num):
+                if excluded_jobs_counter.add():
+                    self.logger.info(
+                        f'Excluded jobs threshold reached. '
+                        f'Stopped on {job_num}th job.')
                     break
             else:
-                excluded_counter = 0
+                excluded_jobs_counter.drop()
                 yield key
+
+            # check options
+            if fetched_jobs_counter.add():
+                self.logger.info(
+                    f'Fetched jobs threshold reached. '
+                    f'Stopped on {job_num}th job.')
+                break
 
     def latest_spiders_jobs(self, spider: Spider,
                             exclude_iterator: JobNumIter) -> JobIter:
