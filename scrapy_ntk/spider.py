@@ -16,7 +16,7 @@
 """
 
 import abc
-import logging
+from typing import Iterable, Iterator, Tuple
 from urllib.parse import urlparse, urlunparse
 
 from scrapy import Spider
@@ -24,10 +24,10 @@ from scrapy.http import Response, Request
 
 from .base import BaseArticleSpider
 from .item import (
-    FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS
+    FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
-from .parsing import ExtractManager
-from .tools.cloud import SHubInterface
+from .parsing import ExtractManager, LinkExtractor
+from .tools.cloud import SHub, SHubFetcher, IterManager, Context
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
@@ -35,15 +35,6 @@ def _get_item(lst: list, fingerprint: int, default=None):
         return lst[fingerprint]
     except IndexError:
         return default
-
-
-class FingerprintsContainer(frozenset):
-
-    def __repr__(self):
-        return '<Fingerprints: {}>'.format(self)
-
-    def __str__(self):
-        return ', '.join(self)
 
 
 class NewsArticleSpider(BaseArticleSpider, abc.ABC):
@@ -65,12 +56,12 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     # Extractors used to extract needed data from HTML
     # Must be `Extractor` instances.
-    _link_extractor = None
+    _link_extractor: LinkExtractor = None
     _header_extractor = None
     _tags_extractor = None
     _text_extractor = None
 
-    _item_extractors = set()
+    _item_extractors: set = None
 
     _extract_manager = None
 
@@ -78,26 +69,15 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     _default_request_meta = {}
 
     def __init__(self, *args, **kwargs):
-        self.cloud = None
-        self._scraped_fingerprints = frozenset()
+        self.cloud: SHub = None
         # call it to check
         self.extract_manager = self.setup_extract_manager()
         self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
-    def connect_cloud(self, cloud: SHubInterface):
+    def connect_cloud(self, cloud: SHub):
         self.cloud = cloud
-        # use `frozenset` here because we will iterate over
-        # `self._scraped_fingerprints` many times and iterating right now might
-        # reduce the traffic
-        self._scraped_fingerprints = FingerprintsContainer(
-            cloud.fetch_week_fingerprints())
-        # log it
-        log_msg = 'Scraped fingerprints:'
-        for i in self._scraped_fingerprints:
-            log_msg += f'\n\t{i}'
-        self.logger.info(log_msg)
 
     # =================
     #  "parse" methods
@@ -111,7 +91,14 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         :return: yields requests to "article pages"
         """
         # parse response and yield requests with `parse_article` "callback"
-        yield from self._yield_requests_from_response(response)
+        urls_iterator = self._yield_urls_from_response(response)
+        for url, path in self._get_urls_iterator(urls_iterator):
+            meta = self.request_meta
+            fingerprint = self._convert_path_to_fingerprint(path)
+            meta.update({FINGERPRINT: fingerprint})
+            yield Request(url=url,
+                          callback=self.parse_article,
+                          meta=meta)
 
     def parse_article(self, response: Response):
         self.logger.info('Started extracting from {}'.format(response.url))
@@ -119,35 +106,45 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         yield from self._yield_article_item(
             response, **self.extract_manager.extract_all(response))
 
-    # ============
-    #  generators
-    # ============
-    # these methods are used to yield requests of items
-    def _yield_request(self, path_or_url: str):
-        if '://' in path_or_url:
-            url = path_or_url
-            path = urlparse(url)[2]
-        else:
-            path = path_or_url
-            url = urlunparse([self._scheme, self._start_domain, path,
-                              None, None, None])
-        fingerprint = self._convert_path_to_fingerprint(path)
-        if fingerprint not in self._scraped_fingerprints:
-            meta = self.request_meta
-            meta.update({FINGERPRINT: fingerprint})
-            yield Request(url=url,
-                          callback=self.parse_article,
-                          meta=meta)
+    def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
+        fetcher = SHubFetcher.from_shub_defaults(self.cloud)
+        scraped_urls_iterator = (
+            (url, urlparse(url)[2]) for url in
+            (item[URL] for item in fetcher.fetch_items()))
 
-    def _yield_requests_from_response(self, response: Response):
+        def context_processor(value: Tuple[str, str]) -> Context:
+            url, path = value
+            ctx = Context(value=value, exclude_value=url)
+            ctx['path'] = path
+            return ctx
+
+        iter_manager = IterManager(
+            general_iterator=urls_iterator,
+            value_type=tuple,
+            return_type=tuple,
+            exclude_value_type=str,
+            exclude_iterator=scraped_urls_iterator,
+            max_exclude_matches=2,
+            context_processor=context_processor,
+        )
+        return iter(iter_manager)
+
+    def _yield_urls_from_response(self, response: Response):
         """
         Parses response from "news-list page" and yields requests to
         "article pages" that aren't scraped yet.
         :param response: `scrapy.http.Response` from "news-list page"
         :return: yield `scrapy.http.Request` instance
         """
-        for link in self._link_extractor.safe_extract_from(response):
-            yield from self._yield_request(link)
+        for path_or_url in self._link_extractor.safe_extract_from(response):
+            if '://' in path_or_url:
+                url = path_or_url
+                path = urlparse(url)[2]
+            else:
+                path = path_or_url
+                url = urlunparse([self._scheme, self._start_domain, path,
+                                  None, None, None])
+            yield url, path
 
     # ============
     #  properties
