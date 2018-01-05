@@ -373,12 +373,10 @@ class CounterWithThreshold:
         self.check_threshold(threshold)
         if threshold is None:
             self._do_check = False
-        elif isinstance(threshold, int):
+        else:
             self._do_check = True
             self._threshold = threshold
             self._count = 0
-        else:
-            raise TypeError
 
     def add(self) -> bool:
         if self._do_check:
@@ -391,25 +389,237 @@ class CounterWithThreshold:
         if self._do_check:
             self._count = 0
 
-
-class ExcludeIterChecker:
-
-    def __init__(self, exclude_iterator: Iterator):
-        if isinstance(exclude_iterator, types.Iterator):
-            self._iterator = exclude_iterator
+    @property
+    def count(self):
+        if self._do_check:
+            return self._count
         else:
-            raise TypeError
+            return None
+
+
+class ExcludeCheck:
+
+    @classmethod
+    def check_iterator(cls, iterator):
+        if isinstance(iterator, collections.Iterator):
+            pass
+        else:
+            raise TypeError(
+                f'`exclude_iterator` has "{type(iterator)}" type, '
+                f'while generator expected.')
+
+    def __init__(self, iterator: Iterator, default=None):
+        self.check_iterator(iterator)
+        self._iterator = iterator
+        self._default = default
         self._completed = False
+        self._yield_next()
+
+    def _yield_next(self):
+        try:
+            value = next(self._iterator)
+        except StopIteration:
+            value = self._default
+        self._value = value
+        return value
 
     def check_next(self, value):
-        if not self._completed:
-            try:
-                next_value = next(self._iterator)
-            except StopIteration:
-                self._completed = True
-            else:
-                return value == next_value
+        if value == self._value:
+            self._yield_next()
+            return True
         return False
+
+    @property
+    def value(self):
+        return self._value
+
+
+class Context:
+
+    CLOSE_REASON = 'close_reason'
+    VALUE = 'value'
+    EXCLUDE_VALUE = 'exclude_value'
+    _lock_keys = frozenset((CLOSE_REASON, VALUE, EXCLUDE_VALUE))
+
+    _value_type: type = object
+    _exclude_value_type: type = object
+
+    def __init__(self, value, exclude_value):
+        self._check_type(value, self._value_type, 'value')
+        self._check_type(exclude_value, self._exclude_value_type, 'exclude_value')
+        self._dict = {
+            self.VALUE: value,
+            self.EXCLUDE_VALUE: exclude_value,
+        }
+
+    def _check_type(self, value, value_type: type, name: str):
+        if not isinstance(value, value_type):
+            raise TypeError(
+                f'Passed "{name}" argument has {type(value)} type, '
+                f'but {value_type} expected.')
+
+    def set_close_reason(self, message: str):
+        self._check_type(message, str, 'message')
+        self._dict[self.CLOSE_REASON] = message
+
+    @property
+    def value(self):
+        return self._dict[self.VALUE]
+
+    @property
+    def exclude_value(self):
+        return self._dict[self.EXCLUDE_VALUE]
+
+    @property
+    def close_reason(self):
+        return self._dict[self.CLOSE_REASON]
+
+    def dict_proxy(self):
+        return types.MappingProxyType(self._dict)
+
+    def update(self, dictionary: dict):
+        for key, val in dictionary:
+            self[key] = val
+
+    def __getitem__(self, item: str):
+        return self._dict[item]
+
+    def __setitem__(self, key: str, value):
+        if key not in self._lock_keys:
+            self._dict[key] = value
+        else:
+            raise KeyError(f'{key} key can not be assigned in this way.')
+
+
+class IterManager:
+
+    _context_type = Context
+    _context_processor_output_type = bool
+
+    def __init__(self, general_iterator: Iterator,
+                 value_type: type =object, return_type: type =object,
+                 exclude_value_type: type =object,
+                 exclude_iterator: Iterator =None, exclude_default =None,
+                 max_iterations: int or None =None,
+                 max_exclude_matches: int or None =None,
+                 max_returned_values: int or None =None,
+                 case_processors: List[Callable] =None,
+                 context_processor: Callable =None,
+                 return_value_processor: Callable =None,
+                 before_finish: Callable =None):
+        if not isinstance(value_type, type):
+            raise TypeError
+        self._value_type = value_type
+
+        if not isinstance(return_type, type):
+            raise TypeError
+        self._return_type = return_type
+
+        if not isinstance(exclude_value_type, type):
+            raise TypeError
+        self._exclude_type = exclude_value_type
+
+        if not isinstance(general_iterator, collections.Iterator):
+            raise TypeError
+        self._general_iterator = general_iterator
+
+        if not isinstance(exclude_default, self._exclude_type):
+            raise TypeError
+        self._exclude_default = exclude_default
+
+        if exclude_iterator is None:
+            exclude_iterator = iter([])  # empty iterator
+        ExcludeCheck.check_iterator(exclude_iterator)
+        self._exclude_iterator = exclude_iterator
+
+        CounterWithThreshold.check_threshold(max_iterations)
+        self._max_iterations = max_iterations
+
+        CounterWithThreshold.check_threshold(max_exclude_matches)
+        self._max_exclude_matches = max_exclude_matches
+
+        CounterWithThreshold.check_threshold(max_returned_values)
+        self._max_returned_value = max_returned_values
+
+        if context_processor is None:
+            context_processor = lambda value: Context(value=value, exclude_value=value)
+        self._context_processor = middleware.Middleware(
+            func=context_processor,
+            input_type=self._value_type,
+            output_type=self._context_type, )
+
+        if before_finish is None:
+            before_finish = lambda ctx: None
+        self._before_finish = middleware.Middleware(
+            func=before_finish,
+            input_type=self._context_type,
+            output_type=None, )
+
+        if return_value_processor is None:
+            return_value_processor = lambda ctx: ctx.value
+        self._return_value_processor = middleware.Middleware(
+                func=return_value_processor,
+                input_type=self._context_type,
+                output_type=self._return_type,)
+
+        if case_processors is None:
+            case_processors = []
+        self._case_processors = [
+            middleware.Middleware(
+                func=processor,
+                input_type=self._context_type,
+                output_type=self._context_processor_output_type, )
+            for processor in case_processors]
+
+    def __iter__(self):
+        # prepare
+        # TODO: add total exclude counter
+        iterations_counter = CounterWithThreshold(
+            threshold=self._max_iterations)
+        exclude_counter = CounterWithThreshold(
+            threshold=self._max_exclude_matches)
+        returned_counter = CounterWithThreshold(
+            threshold=self._max_returned_value)
+        exclude_checker = ExcludeCheck(
+            iterator=self._exclude_iterator,
+            default=self._exclude_default)
+
+        for value in self._general_iterator:
+            # check value type
+            if not isinstance(value, self._value_type):
+                raise TypeError
+
+            # process context
+            context: Context = self._context_processor.call(value)
+
+            # chain case processors
+            skip = False
+            for processor in self._case_processors:
+                if processor.call(context):
+                    skip = True
+                    break
+            if skip:
+                continue
+
+            # check exclude
+            if exclude_checker.check_next(context.exclude_value):
+                if exclude_counter.add():
+                    context.set_close_reason('Exclude matches threshold reached.')
+                    self._before_finish.call(context)
+                    break
+            else:
+                exclude_counter.drop()
+                yield self._return_value_processor.call(context)
+                if returned_counter.add():
+                    context.set_close_reason('Returned values threshold reached.')
+                    self._before_finish.call(context)
+                    break
+
+            # check iterations count
+            if iterations_counter.add():
+                context.set_close_reason('Iterations count threshold reached.')
+                self._before_finish.call(context)
+                break
 
 
 class SHubFetcher:
