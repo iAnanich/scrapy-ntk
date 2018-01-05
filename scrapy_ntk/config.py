@@ -6,9 +6,9 @@ from .item import (
     FIELDS,
     URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
+from .tools.cloud import SCRAPINGHUB_JOBKEY_SEPARATOR
+from .tools.proxy import WEBRANDOMPROXY_URL
 
-SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
-WEBRANDOMPROXY_URL = 'https://proxy-spider.com/api/proxies.example.txt'
 JOBKEY_DEFAULT = '0/0/0'
 
 # variable names

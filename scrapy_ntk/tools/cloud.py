@@ -1,15 +1,18 @@
+import collections
 import datetime
 import logging
 import time
-from typing import Iterator, Iterable, Tuple, Dict, List, Union
 import types
+from typing import Iterator, Iterable, Tuple, Dict, List, Union, Callable, Sequence
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from ..config import cfg, SCRAPINGHUB_JOBKEY_SEPARATOR
+from ..parsing import middleware
+
+SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
 
 STATE = 'state'
 META = 'meta'
