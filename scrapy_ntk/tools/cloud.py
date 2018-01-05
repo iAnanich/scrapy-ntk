@@ -19,6 +19,9 @@ CLOSE_REASON = 'close_reason'
 ITEMS = 'items'
 
 
+# TODO create class for JobKey with `memoryview` module
+
+
 def shortcut_api_key(api_key: str, margin: int =4) -> str:
     """
     Hides most of the API key for security reasons.
@@ -48,7 +51,8 @@ def spider_id_to_name(spider_id: int, project: Project) -> str:
     for spider_dict in project.spiders.list():
         name = spider_dict['id']
         spider: Spider = project.spiders.get(name)
-        if spider_id == spider.key.split(SCRAPINGHUB_JOBKEY_SEPARATOR)[1]:
+        project_id, spider_id_str = spider.key.split(SCRAPINGHUB_JOBKEY_SEPARATOR)
+        if spider_id == int(spider_id_str):
             return name
     else:
         raise ValueError(f'No such spider with {spider_id} ID found')
@@ -61,37 +65,88 @@ def split_jobkey(jobkey: str) -> Tuple[int, int, int]:
 
 
 class SHub:
-    """
-    Uses `scrapinghub.ScrapinghubClient` class to use Scrapy CLoud API.
-    It is expected that it is used only for one spider current running spider,
-    and uses only it's resources (job history).
-    """
 
-    def __init__(self, *, lazy_mode: bool =False, settings: dict or None =None,
+    def __init__(self, *, lazy_mode: bool =False,
+                 default_conf: dict or None =None,
+                 initial_conf: dict or None =None,
                  logger: logging.Logger = None):
         """
         :param lazy_mode: if turned on, lets object to have unset entities. They
         will be set only when needed.
-        :param settings: dictionary for `switch` method.
+        :param initial_conf: dictionary for `switch` method.
         """
         if logger is None:
-            logger = logging.getLogger(__name__)
+            logger = logging.getLogger('ScrapingHub interface')
             logger.setLevel(logging.DEBUG)
         self.logger = logger
+
+        self.defaults = self.Defaults(self, self.logger, default_conf)
+
         self._is_lazy = lazy_mode
 
         # reset client, project and spider to `unset` value
         self.reset_client(stateless=True)
 
-        if settings:
-            self.switch(**settings)
+        if initial_conf:
+            self.switch(**initial_conf)
         elif not lazy_mode:
             # call below must start chain of `switch_` calls
             self.switch_client()
 
-    @classmethod
-    def shortcut_api_key(cls, api_key: str) -> str:
-        return f'{api_key[:4]}\u2026{api_key[-4:]}'
+    class Defaults:
+
+        @classmethod
+        def key_type_dict(cls) -> Dict[str, type]:
+            # TODO: make it possible to pass spider's ID (for example, by using tuples)
+            return {
+                'api_key': str,
+                'project_id': int,
+                'spider_id': int,
+            }
+
+        @classmethod
+        def keys_tuple(cls) -> tuple:
+            return tuple(cls.key_type_dict().keys())
+
+        def __init__(self, shub, logger, config: dict or None):
+            self.shub = shub
+            self.logger = logger
+
+            if config is None:
+                self.config = dict()
+            else:
+                self.config = self.check_conf(config)
+
+        def __getitem__(self, item: str):
+            if item in self.keys_tuple():
+                try:
+                    return self.config[item]
+                except KeyError:
+                    raise KeyError(
+                        f''
+                    ) from None
+            else:
+                raise KeyError(
+                    f'{item} defaults key is not supported.'
+                ) from None
+
+        def check_conf(self, config: dict) -> dict:
+            processed = dict()
+
+            for key, var_type in self.key_type_dict().items():
+                try:
+                    var = config[key]
+                except KeyError:
+                    break
+                if not isinstance(var, var_type):
+                    msg = str(
+                        f'Config var with {key} has not valid type.'
+                        f'{var_type} expected, got {type(var)}')
+                    self.logger.error(msg)
+                    raise TypeError(msg)
+                processed[key] = var
+
+            return processed
 
     shortcut_api_key = staticmethod(shortcut_api_key)
 
@@ -138,27 +193,6 @@ class SHub:
             raise ValueError('`client` is not set yet.')
 
     """
-    `default_*` properties returns default key for `get_` method
-    """
-    @property
-    def default_api_key(self) -> str:
-        return cfg.api_key
-
-    @property
-    def default_project_id(self) -> str:
-        return cfg.current_project_id
-
-    @property
-    def default_spider_name(self) -> str:
-        for spider_dict in self.project.spiders.list():
-            spider_name = spider_dict['id']
-            spider_id = spider_name_to_id(spider_name, self.project)
-            if spider_id == cfg.current_spider_id:
-                return spider_name
-        else:
-            raise RuntimeError(f'No spider found with `{id}` ID.')
-
-    """
     `_switch_*` methods calls `get_*` method, assigns value and logs it.
     """
     def _switch_spider(self, spider_name: str) -> Spider:
@@ -192,7 +226,8 @@ class SHub:
             raise ValueError(f'Can not change `spider` while '
                              f'`project` is not set (=`{self.unset}`)')
         if spider_name is None:
-            spider_name = self.default_spider_name
+            spider_id = self.defaults['spider_id']
+            spider_name = spider_id_to_name(spider_id, self.project)
         spider = self._switch_spider(spider_name)
         return spider
 
@@ -201,14 +236,14 @@ class SHub:
             raise ValueError(f'Can not change `project` while '
                              f'`client` is not set (=`{self.unset}`)')
         if project_id is None:
-            project_id = self.default_project_id
+            project_id = self.defaults['project_id']
         project = self._switch_project(project_id)
         self.reset_spider()
         return project
 
     def switch_client(self, api_key: str or None =None) -> Client:
         if api_key is None:
-            api_key = self.default_api_key
+            api_key = self.defaults['api_key']
         client = self._switch_client(api_key)
         self.reset_project()
         return client
