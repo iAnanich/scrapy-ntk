@@ -4,7 +4,7 @@ import logging
 
 from scrapy.http.request import Request
 
-from ..config import WEBRANDOMPROXY_URL
+WEBRANDOMPROXY_URL = 'https://proxy-spider.com/api/proxies.example.txt'
 
 
 logger = logging.getLogger(__name__)

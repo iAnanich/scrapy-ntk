@@ -5,7 +5,8 @@ from scrapy import signals
 
 from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
-from .tools.cloud import SHubInterface
+from .tools.cloud import SHub, SHubFetcher
+from .item import FINGERPRINT
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -43,4 +44,11 @@ class SHubConnector:
         if is_any_instance(spider, TestingSpider, WorkerSpider):
             pass
         elif self.enabled and isinstance(spider, NewsArticleSpider):
-            spider.connect_cloud(SHubInterface())
+            shub = SHub(
+                default_conf={
+                    'api_key': cfg.api_key,
+                    'project_id': cfg.current_project_id,
+                    'spider_id': cfg.current_spider_id,
+                },
+            )
+            spider.connect_cloud(shub)
