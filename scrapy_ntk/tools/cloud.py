@@ -665,6 +665,22 @@ class SHubFetcher:
         self.settings = self.process_settings(settings)
 
     @classmethod
+    def from_shub_defaults(cls, shub: SHub):
+        # use empty list to get all jobs
+        iterable = list()
+
+        settings = {
+            shub.defaults['api_key']: {
+                shub.defaults['project_id']: {
+                    shub.defaults['spider_id']: iterable,
+                }
+            }
+        }
+        logger = shub.logger
+        new = cls(settings=settings, logger=logger)
+        return new
+
+    @classmethod
     def new_helper(cls):
         logger = logging.getLogger('SHubFetcher: SHub helper')
         logger.setLevel(logging.ERROR)
@@ -730,41 +746,61 @@ class SHubFetcher:
         not want to get from this method
         :return: iterator that yields job's numbers
         """
-        fetched_jobs_counter = CounterWithThreshold(
-            threshold=self.maximum_fetched_jobs)
-        excluded_jobs_counter = CounterWithThreshold(
-            threshold=self.maximum_excluded_matches)
-        exclude_iter_checker = ExcludeIterChecker(exclude_iterator)
 
-        self.logger.info(f'Start fetching jobs for {spider.key} spider.')
+        def context_processor(value: dict):
+            key: str = value[KEY]
+            number: int = int(split_jobkey(key)[-1])
+            close_reason: str = value[CLOSE_REASON]
+            items_count: int = value.get(ITEMS, 0)
+            ctx = Context(value=value, exclude_value=number)
+            ctx.update(dict(
+                job_key=key,
+                job_num=number,
+                job_close_reason=close_reason,
+                job_items=items_count,
+            ))
+            return ctx
 
-        for job_summary in self.iter_job_summaries(spider):
-            key = job_summary[KEY]
-            job_num = int(split_jobkey(key)[-1])
+        def before_finish(ctx: dict):
+            self.logger.info(f'Finished on {ctx["job_num"]} job number with reason: {ctx["close_reason"]}')
 
-            # Job processing logic
-            if job_summary[CLOSE_REASON] != FINISHED:
+        def return_jobkey(ctx: dict):
+            return ctx['job_key']
+
+        def unsuccessful_job(ctx: dict):
+            if ctx['job_close_reason'] != FINISHED:
                 self.logger.error(
-                    f'job with {key} key finished unsuccessfully.')
-            elif job_summary.get(ITEMS, 0) == 0:
-                self.logger.info(
-                    f'job with {key} key has no items.')
-            elif exclude_iter_checker.check_next(job_num):
-                if excluded_jobs_counter.add():
-                    self.logger.info(
-                        f'Excluded jobs threshold reached. '
-                        f'Stopped on {job_num}th job.')
-                    break
+                    f'job with {ctx["job_key"]} key finished unsuccessfully.')
+                return True
             else:
-                excluded_jobs_counter.drop()
-                yield key
+                return False
 
-            # check options
-            if fetched_jobs_counter.add():
+        def empty_job(ctx):
+            if ctx['job_items'] < 1:
                 self.logger.info(
-                    f'Fetched jobs threshold reached. '
-                    f'Stopped on {job_num}th job.')
-                break
+                    f'job with {ctx["job_key"]} key has no items.')
+                return True
+            else:
+                return False
+
+        iter_manager = IterManager(
+            general_iterator=self.iter_job_summaries(spider),
+            value_type=dict,
+            return_value_processor=return_jobkey,
+            return_type=str,
+            exclude_iterator=exclude_iterator,
+            exclude_value_type=int,
+            exclude_default=0,
+            max_iterations=self.maximum_fetched_jobs,
+            max_exclude_matches=self.maximum_excluded_matches,
+            before_finish=before_finish,
+            context_processor=context_processor,
+            case_processors=[unsuccessful_job, empty_job],
+        )
+
+        self.logger.info(f'Ready to fetch jobs for {spider.key} spider.')
+
+        yield from iter_manager
 
     def latest_spiders_jobs(self, spider: Spider,
                             exclude_iterator: JobNumIter) -> JobIter:
