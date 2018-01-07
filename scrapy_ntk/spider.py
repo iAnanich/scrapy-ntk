@@ -108,9 +108,9 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
-        scraped_urls_iterator = (
-            (url, urlparse(url)[2]) for url in
-            (item[URL] for item in fetcher.fetch_items()))
+        scraped_urls_iterator = (item[URL] for item in fetcher.fetch_items())
+        # actual URL can not be None
+        exclude_default = (None, )
 
         def context_processor(value: Tuple[str, str]) -> Context:
             url, path = value
@@ -122,9 +122,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             general_iterator=urls_iterator,
             value_type=tuple,
             return_type=tuple,
-            exclude_value_type=str,
+            exclude_value_type=tuple,
+            exclude_default=exclude_default,
             exclude_iterator=scraped_urls_iterator,
-            max_exclude_matches=2,
+            max_exclude_matches=None,  # TODO: move to settings
             context_processor=context_processor,
         )
         return iter(iter_manager)
