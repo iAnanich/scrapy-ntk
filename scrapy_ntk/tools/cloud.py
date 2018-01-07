@@ -510,7 +510,7 @@ class Context:
 
     @property
     def close_reason(self):
-        return self._dict[self.CLOSE_REASON]
+        return self._dict.get(self.CLOSE_REASON, None)
 
     def dict_proxy(self):
         return types.MappingProxyType(self._dict)

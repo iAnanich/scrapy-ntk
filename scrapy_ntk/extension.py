@@ -46,9 +46,9 @@ class SHubConnector:
         elif self.enabled and isinstance(spider, NewsArticleSpider):
             shub = SHub(
                 default_conf={
-                    'api_key': cfg.api_key,
-                    'project_id': cfg.current_project_id,
-                    'spider_id': cfg.current_spider_id,
+                    'api_key': str(cfg.api_key),
+                    'project_id': int(cfg.current_project_id),
+                    'spider_id': int(cfg.current_spider_id),
                 },
             )
             spider.connect_cloud(shub)
