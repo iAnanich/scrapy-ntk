@@ -4,7 +4,7 @@ from setuptools import setup
 def do_setup():
     setup(
         name='scrapy_ntk',
-        version='1.7.0',
+        version='1.8',
         license='MIT',
         author='Illia Ananich',
         author_email='illia.ananich@gmail.com',

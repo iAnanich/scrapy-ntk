@@ -510,13 +510,13 @@ class Context:
 
     @property
     def close_reason(self):
-        return self._dict[self.CLOSE_REASON]
+        return self._dict.get(self.CLOSE_REASON, None)
 
     def dict_proxy(self):
         return types.MappingProxyType(self._dict)
 
     def update(self, dictionary: dict):
-        for key, val in dictionary:
+        for key, val in dictionary.items():
             self[key] = val
 
     def __getitem__(self, item: str):
@@ -537,11 +537,11 @@ class IterManager:
     def __init__(self, general_iterator: Iterator,
                  value_type: type =object, return_type: type =object,
                  exclude_value_type: type =object,
-                 exclude_iterator: Iterator =None, exclude_default =None,
+                 exclude_iterator: Iterator =None, exclude_default=None,
                  max_iterations: int or None =None,
                  max_exclude_matches: int or None =None,
                  max_returned_values: int or None =None,
-                 case_processors: List[Callable] =None,
+                 case_processors: Sequence[Callable] =None,
                  context_processor: Callable =None,
                  return_value_processor: Callable =None,
                  before_finish: Callable =None):
@@ -784,6 +784,10 @@ class SHubFetcher:
         not want to get from this method
         :return: iterator that yields job's numbers
         """
+        JOB_KEY = 'job_key'
+        JOB_NUMBER = 'job_num'
+        JOB_CLOSE_REASON = 'job_close_reason'
+        JOB_ITEMS = 'job_items'
 
         def context_processor(value: dict):
             key: str = value[KEY]
@@ -800,23 +804,23 @@ class SHubFetcher:
             return ctx
 
         def before_finish(ctx: dict):
-            self.logger.info(f'Finished on {ctx["job_num"]} job number with reason: {ctx["close_reason"]}')
+            self.logger.info(f'Finished on {ctx[JOB_NUMBER]} job number with reason: {ctx[JOB_CLOSE_REASON]}')
 
         def return_jobkey(ctx: dict):
-            return ctx['job_key']
+            return ctx[JOB_KEY]
 
         def unsuccessful_job(ctx: dict):
-            if ctx['job_close_reason'] != FINISHED:
+            if ctx[JOB_CLOSE_REASON] != FINISHED:
                 self.logger.error(
-                    f'job with {ctx["job_key"]} key finished unsuccessfully.')
+                    f'job with {ctx[JOB_KEY]} key finished unsuccessfully.')
                 return True
             else:
                 return False
 
         def empty_job(ctx):
-            if ctx['job_items'] < 1:
+            if ctx[JOB_ITEMS] < 1:
                 self.logger.info(
-                    f'job with {ctx["job_key"]} key has no items.')
+                    f'job with {ctx[JOB_KEY]} key has no items.')
                 return True
             else:
                 return False
@@ -833,7 +837,7 @@ class SHubFetcher:
             max_exclude_matches=self.maximum_excluded_matches,
             before_finish=before_finish,
             context_processor=context_processor,
-            case_processors=[unsuccessful_job, empty_job],
+            case_processors=(unsuccessful_job, empty_job),
         )
 
         self.logger.info(f'Ready to fetch jobs for {spider.key} spider.')
