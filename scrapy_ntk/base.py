@@ -124,12 +124,8 @@ class BaseArticleItemWriter(LoggableBase, abc.ABC):
         pass
 
     @property
-    def klass(self) -> str:
-        return self.__class__.__name__
-
-    @property
-    def name(self):
-        return f'{self.klass}[{self._name}]'
+    def name(self) -> str:
+        return f'{self.__class__.__name__}<{self._name}>'
 
     def __repr__(self):
         return f'<{self.name}>'

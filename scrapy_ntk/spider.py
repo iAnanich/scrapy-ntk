@@ -94,8 +94,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         # parse response and yield requests with `parse_article` "callback"
         urls_iterator = self._yield_urls_from_response(response)
         for url, path in self._get_urls_iterator(urls_iterator):
-            meta = self.request_meta
             fingerprint = self._convert_path_to_fingerprint(path)
+            meta = self.request_meta
             meta.update({FINGERPRINT: fingerprint})
             yield Request(url=url,
                           callback=self.parse_article,

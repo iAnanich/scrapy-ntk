@@ -107,3 +107,6 @@ class SQLAlchemyWriter(BaseArticleItemWriter):
             for i, item in enumerate(items):
                 msg += f'\n\t{i:4}. {item}'
             self.logger.debug(msg)
+
+    def __repr__(self):
+        return f'<{self.name} : {self._Model}>'
