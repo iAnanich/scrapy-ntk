@@ -78,6 +78,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     def connect_cloud(self, cloud: SHub):
         self.cloud = cloud
+        self.logger.info(f'{type(cloud)} connected.')
 
     # =================
     #  "parse" methods

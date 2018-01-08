@@ -262,7 +262,7 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
     def is_active(self, val: bool):
         state = bool(val)
         self._state = state
-        self.logger.info(f'{self.name} | state update: {self._state}')
+        self.logger.info(f'state update: {self._state}')
 
     @property
     def exporter(self) -> BaseArticleItemExporter:
@@ -272,12 +272,12 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
     def exporter(self, new: BaseArticleItemExporter):
         if not isinstance(new, BaseArticleItemExporter):
             exporter_type_msg = \
-                f'{self.name} | You are trying to set "exporter" ' \
+                f'You are trying to set "exporter" ' \
                 f'with wrong type: {type(new)}'
             self.logger.error(exporter_type_msg)
             raise TypeError(exporter_type_msg)
         else:
-            self.logger.debug(f'{self.name} | {new} exporter settled up.')
+            self.logger.debug(f'{new} exporter settled up.')
             self._exporter = new
 
     @property
@@ -292,29 +292,29 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
         try:
             self.setup_exporter(spider)
         except Exception as exc:
-            self.logger.exception(f'{self.name} | Error while setting up {self.name}: {exc}')
+            self.logger.exception(f'Error while setting up {self.name}: {exc}')
             self.is_active = False
         else:
             if self.exporter is None:
-                self.logger.warning(f'{self.name} | "exporter" is not set up.')
+                self.logger.warning(f'"exporter" is not set up.')
                 self.is_active = False
             else:
                 self.is_active = True
             if self.master is None:
-                self.logger.warning(f'{self.name} | "master" attribute is not set.')
+                self.logger.warning(f'"master" attribute is not set.')
 
         if self._state:
             try:
                 self.exporter.start_exporting()
             except Exception as exc:
-                self.logger.exception(f'{self.name} | Error while starting exporting with {self.exporter}: {exc}')
+                self.logger.exception(f'Error while starting exporting with {self.exporter}: {exc}')
                 self.is_active = False
 
     def close_spider(self, spider):
         if self._state:
             self.exporter.finish_exporting()
             self.logger.info(
-                f'{self.name} | Successfully finished <{self.exporter.name}> '
+                f'Successfully finished <{self.exporter.name}> '
                 f'exporter with {self.exporter.count} items exported.')
 
     def process_item(self, item: ArticleItem, spider) -> ArticleItem:
@@ -324,7 +324,7 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
                     self.exporter.export_item(item)
                 except Exception as exc:
                     self.logger.exception(
-                        f'{self.name} | Error while exporting '
+                        f'Error while exporting '
                         f'<{item["fingerprint"]}> item: {exc}')
         else:
             pass

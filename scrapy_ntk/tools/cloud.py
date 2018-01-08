@@ -202,14 +202,14 @@ class SHub:
         spider = self.get_spider(spider_name)
         self._spider = spider
         self.logger.info(
-            f'Spider switched to {spider_name}.')
+            f'Spider switched to "{spider_name}" ({spider.key}).')
         return spider
 
     def _switch_project(self, project_id: int) -> Project:
         project = self.get_project(project_id)
         self._project = project
         self.logger.info(
-            f'Project switched to {project_id}.')
+            f'Project switched to #{project_id}.')
         return project
 
     def _switch_client(self, api_key: str) -> Client:
