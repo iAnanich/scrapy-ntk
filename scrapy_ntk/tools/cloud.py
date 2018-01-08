@@ -1,17 +1,15 @@
-import collections
 import datetime
 import logging
 import time
-import types
-from typing import Iterator, Iterable, Tuple, Dict, List, Union, Callable, Sequence
+from typing import Iterator, Iterable, Tuple, Dict, List, Union
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from ..utils.func import StronglyTypedFunc
-from ..utils.counter import CounterWithThreshold, Threshold
+from ..utils.counter import Threshold
+from ..utils.iter_manager import IterManager, Context
 
 SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
 
@@ -396,237 +394,6 @@ ProcessedSettingsType = ClientsTuple = Tuple[
 ]
 
 
-class ExcludeCheck:
-
-    @classmethod
-    def check_iterator(cls, iterator):
-        if isinstance(iterator, collections.Iterator):
-            pass
-        else:
-            raise TypeError(
-                f'`exclude_iterator` has "{type(iterator)}" type, '
-                f'while generator expected.')
-
-    def __init__(self, iterator: Iterator, default=None):
-        self.check_iterator(iterator)
-        self._iterator = iterator
-        self._default = default
-        self._completed = False
-        self._yield_next()
-
-    def _yield_next(self):
-        try:
-            value = next(self._iterator)
-        except StopIteration:
-            value = self._default
-        self._value = value
-        return value
-
-    def check_next(self, value):
-        if value == self._value:
-            self._yield_next()
-            return True
-        return False
-
-    @property
-    def value(self):
-        return self._value
-
-
-class Context:
-
-    CLOSE_REASON = 'close_reason'
-    VALUE = 'value'
-    EXCLUDE_VALUE = 'exclude_value'
-    _lock_keys = frozenset((CLOSE_REASON, VALUE, EXCLUDE_VALUE))
-
-    _value_type: type = object
-    _exclude_value_type: type = object
-
-    def __init__(self, value, exclude_value):
-        self._check_type(value, self._value_type, 'value')
-        self._check_type(exclude_value, self._exclude_value_type, 'exclude_value')
-        self._dict = {
-            self.VALUE: value,
-            self.EXCLUDE_VALUE: exclude_value,
-        }
-
-    def _check_type(self, value, value_type: type, name: str):
-        if not isinstance(value, value_type):
-            raise TypeError(
-                f'Passed "{name}" argument has {type(value)} type, '
-                f'but {value_type} expected.')
-
-    def set_close_reason(self, message: str):
-        self._check_type(message, str, 'message')
-        self._dict[self.CLOSE_REASON] = message
-
-    @property
-    def value(self):
-        return self._dict[self.VALUE]
-
-    @property
-    def exclude_value(self):
-        return self._dict[self.EXCLUDE_VALUE]
-
-    @property
-    def close_reason(self):
-        return self._dict.get(self.CLOSE_REASON, None)
-
-    def dict_proxy(self):
-        return types.MappingProxyType(self._dict)
-
-    def update(self, dictionary: dict):
-        for key, val in dictionary.items():
-            self[key] = val
-
-    def __getitem__(self, item: str):
-        return self._dict[item]
-
-    def __setitem__(self, key: str, value):
-        if key not in self._lock_keys:
-            self._dict[key] = value
-        else:
-            raise KeyError(f'{key} key can not be assigned in this way.')
-
-
-class IterManager:
-
-    _context_type = Context
-    _context_processor_output_type = bool
-
-    def __init__(self, general_iterator: Iterator,
-                 value_type: type =object, return_type: type =object,
-                 exclude_value_type: type =object,
-                 exclude_iterator: Iterator =None, exclude_default=None,
-                 max_iterations: int or None =None,
-                 max_exclude_matches: int or None =None,
-                 max_total_excluded: int or None =None,
-                 max_returned_values: int or None =None,
-                 case_processors: Sequence[Callable] =None,
-                 context_processor: Callable =None,
-                 return_value_processor: Callable =None,
-                 before_finish: Callable =None):
-        if not isinstance(value_type, type):
-            raise TypeError
-        self._value_type = value_type
-
-        if not isinstance(return_type, type):
-            raise TypeError
-        self._return_type = return_type
-
-        if not isinstance(exclude_value_type, type):
-            raise TypeError
-        self._exclude_type = exclude_value_type
-
-        if not isinstance(general_iterator, collections.Iterator):
-            raise TypeError
-        self._general_iterator = general_iterator
-
-        if not isinstance(exclude_default, self._exclude_type):
-            raise TypeError
-        self._exclude_default = exclude_default
-
-        if exclude_iterator is None:
-            exclude_iterator = iter([])  # empty iterator
-        ExcludeCheck.check_iterator(exclude_iterator)
-        self._exclude_iterator = exclude_iterator
-
-        self._total_iterations_threshold = Threshold(max_iterations)
-
-        self._exclude_matches_threshold = Threshold(max_exclude_matches)
-
-        self._total_excluded_threshold = Threshold(max_total_excluded)
-
-        self._total_returned_threshold = Threshold(max_returned_values)
-
-        if context_processor is None:
-            context_processor = lambda value: Context(value=value, exclude_value=value)
-        self._context_processor = StronglyTypedFunc(
-            func=context_processor,
-            input_type=self._value_type,
-            output_type=self._context_type, )
-
-        if before_finish is None:
-            before_finish = lambda ctx: None
-        self._before_finish = StronglyTypedFunc(
-            func=before_finish,
-            input_type=self._context_type,
-            output_type=None, )
-
-        if return_value_processor is None:
-            return_value_processor = lambda ctx: ctx.value
-        self._return_value_processor = StronglyTypedFunc(
-                func=return_value_processor,
-                input_type=self._context_type,
-                output_type=self._return_type,)
-
-        if case_processors is None:
-            case_processors = []
-        self._case_processors = [
-            StronglyTypedFunc(
-                func=processor,
-                input_type=self._context_type,
-                output_type=self._context_processor_output_type, )
-            for processor in case_processors]
-
-    def __iter__(self):
-        # prepare
-        # TODO: add total exclude counter
-        iterations_counter = CounterWithThreshold(
-            threshold=self._total_iterations_threshold)
-        exclude_counter = CounterWithThreshold(
-            threshold=self._exclude_matches_threshold)
-        total_exclude_counter = CounterWithThreshold(
-            threshold=self._total_excluded_threshold)
-        returned_counter = CounterWithThreshold(
-            threshold=self._total_returned_threshold)
-        exclude_checker = ExcludeCheck(
-            iterator=self._exclude_iterator,
-            default=self._exclude_default)
-
-        for value in self._general_iterator:
-            # check value type
-            if not isinstance(value, self._value_type):
-                raise TypeError
-
-            # process context
-            context: Context = self._context_processor.call(value)
-
-            # chain case processors
-            skip = False
-            for processor in self._case_processors:
-                if processor.call(context):
-                    skip = True
-                    break
-            if skip:
-                continue
-
-            # check exclude
-            if exclude_checker.check_next(context.exclude_value):
-                if exclude_counter.add():
-                    context.set_close_reason('Exclude matches threshold reached.')
-                    self._before_finish.call(context)
-                    break
-                if total_exclude_counter.add():
-                    context.set_close_reason('Total excluded threshold reached.')
-                    self._before_finish.call(context)
-                    break
-            else:
-                exclude_counter.drop()
-                yield self._return_value_processor.call(context)
-                if returned_counter.add():
-                    context.set_close_reason('Returned values threshold reached.')
-                    self._before_finish.call(context)
-                    break
-
-            # check iterations count
-            if iterations_counter.add():
-                context.set_close_reason('Iterations count threshold reached.')
-                self._before_finish.call(context)
-                break
-
-
 class SHubFetcher:
 
     def __init__(self, settings: SettingsInputType, *,
@@ -757,7 +524,7 @@ class SHubFetcher:
         JOB_CLOSE_REASON = 'job_close_reason'
         JOB_ITEMS = 'job_items'
 
-        def context_processor(value: dict):
+        def context_processor(value: dict) -> Context:
             key: str = value[KEY]
             number: int = int(split_jobkey(key)[-1])
             close_reason: str = value[CLOSE_REASON]
@@ -771,13 +538,13 @@ class SHubFetcher:
             ))
             return ctx
 
-        def before_finish(ctx: dict):
-            self.logger.info(f'Finished on {ctx[JOB_NUMBER]} job number with reason: {ctx[JOB_CLOSE_REASON]}')
+        def before_finish(ctx: Context):
+            self.logger.info(f'Finished on {ctx[JOB_NUMBER]} job number with reason: {ctx.close_reason}')
 
-        def return_jobkey(ctx: dict):
+        def return_jobkey(ctx: Context):
             return ctx[JOB_KEY]
 
-        def unsuccessful_job(ctx: dict):
+        def unsuccessful_job(ctx: Context):
             if ctx[JOB_CLOSE_REASON] != FINISHED:
                 self.logger.error(
                     f'job with {ctx[JOB_KEY]} key finished unsuccessfully.')
@@ -785,7 +552,7 @@ class SHubFetcher:
             else:
                 return False
 
-        def empty_job(ctx):
+        def empty_job(ctx: Context):
             if ctx[JOB_ITEMS] < 1:
                 self.logger.info(
                     f'job with {ctx[JOB_KEY]} key has no items.')
