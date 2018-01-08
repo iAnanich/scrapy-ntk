@@ -11,6 +11,7 @@ from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
 from ..utils.func import StronglyTypedFunc
+from ..utils.counter import CounterWithThreshold, Threshold
 
 SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
 
@@ -395,46 +396,6 @@ ProcessedSettingsType = ClientsTuple = Tuple[
 ]
 
 
-class CounterWithThreshold:
-
-    @classmethod
-    def check_threshold(cls, threshold: int or None):
-        if threshold is None:
-            pass
-        elif isinstance(threshold, int):
-            if threshold <= 0:
-                raise TypeError('threshold greater then zero.')
-        else:
-            raise TypeError('threshold must be of type `int` or `NoneType`')
-
-    def __init__(self, threshold: int or None = None):
-        self.check_threshold(threshold)
-        if threshold is None:
-            self._do_check = False
-        else:
-            self._do_check = True
-            self._threshold = threshold
-            self._count = 0
-
-    def add(self) -> bool:
-        if self._do_check:
-            self._count += 1
-            return self._count == self._threshold
-        else:
-            return False
-
-    def drop(self):
-        if self._do_check:
-            self._count = 0
-
-    @property
-    def count(self):
-        if self._do_check:
-            return self._count
-        else:
-            return None
-
-
 class ExcludeCheck:
 
     @classmethod
@@ -540,6 +501,7 @@ class IterManager:
                  exclude_iterator: Iterator =None, exclude_default=None,
                  max_iterations: int or None =None,
                  max_exclude_matches: int or None =None,
+                 max_total_excluded: int or None =None,
                  max_returned_values: int or None =None,
                  case_processors: Sequence[Callable] =None,
                  context_processor: Callable =None,
@@ -570,14 +532,13 @@ class IterManager:
         ExcludeCheck.check_iterator(exclude_iterator)
         self._exclude_iterator = exclude_iterator
 
-        CounterWithThreshold.check_threshold(max_iterations)
-        self._max_iterations = max_iterations
+        self._total_iterations_threshold = Threshold(max_iterations)
 
-        CounterWithThreshold.check_threshold(max_exclude_matches)
-        self._max_exclude_matches = max_exclude_matches
+        self._exclude_matches_threshold = Threshold(max_exclude_matches)
 
-        CounterWithThreshold.check_threshold(max_returned_values)
-        self._max_returned_value = max_returned_values
+        self._total_excluded_threshold = Threshold(max_total_excluded)
+
+        self._total_returned_threshold = Threshold(max_returned_values)
 
         if context_processor is None:
             context_processor = lambda value: Context(value=value, exclude_value=value)
@@ -613,11 +574,13 @@ class IterManager:
         # prepare
         # TODO: add total exclude counter
         iterations_counter = CounterWithThreshold(
-            threshold=self._max_iterations)
+            threshold=self._total_iterations_threshold)
         exclude_counter = CounterWithThreshold(
-            threshold=self._max_exclude_matches)
+            threshold=self._exclude_matches_threshold)
+        total_exclude_counter = CounterWithThreshold(
+            threshold=self._total_excluded_threshold)
         returned_counter = CounterWithThreshold(
-            threshold=self._max_returned_value)
+            threshold=self._total_returned_threshold)
         exclude_checker = ExcludeCheck(
             iterator=self._exclude_iterator,
             default=self._exclude_default)
@@ -643,6 +606,10 @@ class IterManager:
             if exclude_checker.check_next(context.exclude_value):
                 if exclude_counter.add():
                     context.set_close_reason('Exclude matches threshold reached.')
+                    self._before_finish.call(context)
+                    break
+                if total_exclude_counter.add():
+                    context.set_close_reason('Total excluded threshold reached.')
                     self._before_finish.call(context)
                     break
             else:
@@ -689,13 +656,14 @@ class SHubFetcher:
             logger.setLevel(logging.DEBUG)
         self.logger = logger
 
-        # check input here, before any progress
         try:
-            CounterWithThreshold.check_threshold(maximum_fetched_jobs)
-            CounterWithThreshold.check_threshold(maximum_excluded_matches)
+            # it will check their values
+            Threshold(maximum_fetched_jobs)
+            Threshold(maximum_excluded_matches)
         except TypeError as exc:
-            self.logger.exception(f'Wrong `maximum_*` type.: {str(exc)}')
-            raise
+            msg = f'Wrong `maximum_*` type: {str(exc)}'
+            self.logger.exception(msg)
+            raise TypeError(msg) from None
 
         self.maximum_excluded_matches = maximum_excluded_matches
         self.maximum_fetched_jobs = maximum_fetched_jobs
