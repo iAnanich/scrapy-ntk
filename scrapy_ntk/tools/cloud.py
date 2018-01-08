@@ -10,7 +10,7 @@ from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from ..parsing import middleware
+from ..utils.func import StronglyTypedFunc
 
 SCRAPINGHUB_JOBKEY_SEPARATOR = '/'
 
@@ -581,21 +581,21 @@ class IterManager:
 
         if context_processor is None:
             context_processor = lambda value: Context(value=value, exclude_value=value)
-        self._context_processor = middleware.Middleware(
+        self._context_processor = StronglyTypedFunc(
             func=context_processor,
             input_type=self._value_type,
             output_type=self._context_type, )
 
         if before_finish is None:
             before_finish = lambda ctx: None
-        self._before_finish = middleware.Middleware(
+        self._before_finish = StronglyTypedFunc(
             func=before_finish,
             input_type=self._context_type,
             output_type=None, )
 
         if return_value_processor is None:
             return_value_processor = lambda ctx: ctx.value
-        self._return_value_processor = middleware.Middleware(
+        self._return_value_processor = StronglyTypedFunc(
                 func=return_value_processor,
                 input_type=self._context_type,
                 output_type=self._return_type,)
@@ -603,7 +603,7 @@ class IterManager:
         if case_processors is None:
             case_processors = []
         self._case_processors = [
-            middleware.Middleware(
+            StronglyTypedFunc(
                 func=processor,
                 input_type=self._context_type,
                 output_type=self._context_processor_output_type, )
