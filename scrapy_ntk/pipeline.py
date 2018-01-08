@@ -73,6 +73,6 @@ class SQLAlchemyPipeline(BaseArticlePipeline):
                 enable_postpone_mode=True,
                 writer=SQLAlchemyWriter(
                     session=self.master.session,
-                    Model=self.master.Model,
+                    declarative_model_class=self.master.Model,
                 )
             )

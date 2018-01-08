@@ -78,6 +78,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     def connect_cloud(self, cloud: SHub):
         self.cloud = cloud
+        self.logger.info(f'{type(cloud)} connected.')
 
     # =================
     #  "parse" methods
@@ -93,8 +94,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         # parse response and yield requests with `parse_article` "callback"
         urls_iterator = self._yield_urls_from_response(response)
         for url, path in self._get_urls_iterator(urls_iterator):
-            meta = self.request_meta
             fingerprint = self._convert_path_to_fingerprint(path)
+            meta = self.request_meta
             meta.update({FINGERPRINT: fingerprint})
             yield Request(url=url,
                           callback=self.parse_article,
@@ -156,10 +157,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         return [self._check_field_implementation('_start_domain'), ]
 
     def start_requests(self):
-        url = '{}://{}/{}'.format(
-            self._check_field_implementation('_scheme'),
-            self._check_field_implementation('_start_domain'),
-            self._check_field_implementation('_start_path'))
+        url = '{scheme}://{domain}/{path}'.format(
+            scheme=self._check_field_implementation('_scheme'),
+            domain=self._check_field_implementation('_start_domain'),
+            path=self._check_field_implementation('_start_path'))
         request = Request(url, callback=self.parse, meta=self.request_meta)
         yield request
 

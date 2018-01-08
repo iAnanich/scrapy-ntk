@@ -74,7 +74,7 @@ class MiddlewareContainer(list):
 
     def _check_type(self, obj):
         if not isinstance(obj, Middleware):
-            raise TypeError('is not `{}` object.'.format(self._items_type))
+            raise TypeError(f'is not `{self._items_type}` object.')
 
     def append(self, obj):
         self._check_type(obj)
