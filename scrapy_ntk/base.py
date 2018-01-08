@@ -40,8 +40,7 @@ class BaseArticleSpider(abc.ABC, Spider):
             self._enable_proxy = True
             self._proxy_mode = self._proxy_mode or cfg.proxy_mode
             self.logger.info('Spider set `_enable_proxy=True`.')
-            self.logger.info('Spider set `_proxy_mode={}`.'
-                        .format(self._proxy_mode))
+            self.logger.info(f'Spider set `_proxy_mode={self._proxy_mode}`.')
 
         super().__init__(*args, **kwargs)
 

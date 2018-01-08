@@ -157,10 +157,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         return [self._check_field_implementation('_start_domain'), ]
 
     def start_requests(self):
-        url = '{}://{}/{}'.format(
-            self._check_field_implementation('_scheme'),
-            self._check_field_implementation('_start_domain'),
-            self._check_field_implementation('_start_path'))
+        url = '{scheme}://{domain}/{path}'.format(
+            scheme=self._check_field_implementation('_scheme'),
+            domain=self._check_field_implementation('_start_domain'),
+            path=self._check_field_implementation('_start_path'))
         request = Request(url, callback=self.parse, meta=self.request_meta)
         yield request
 

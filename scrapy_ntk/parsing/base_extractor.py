@@ -147,8 +147,7 @@ class GeneratorCSSExtractor(CSSExtractor, abc.ABC):
                 for item in selected:
                     yield item
             else:
-                raise RuntimeError(
-                    '`{}` selector failed'.format(string_selector))
+                raise RuntimeError(f'`{string_selector}` selector failed')
 
     def extract_from(self, selector: SelectorList):
         for selected in self.select_from(selector):
