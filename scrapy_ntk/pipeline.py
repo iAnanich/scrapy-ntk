@@ -1,5 +1,3 @@
-import logging
-
 from .base import BaseArticlePipeline
 from .config import cfg
 from .exporting import (
@@ -13,33 +11,16 @@ from .exporting import (
     BackupGSpreadRow,
 )
 from .spider import BaseArticleSpider
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-
-def _to_boolean(option: str) -> bool:
-    if option in ['True', '1']:
-        return True
-    elif option in ['False', '0']:
-        return False
-    else:
-        raise RuntimeError('Cannot recognise argument value: {}'
-                           .format(option))
-
-
-ENABLE_GSPREAD = _to_boolean(cfg.enable_gspread)
-ENABLE_SHUB = _to_boolean(cfg.enable_shub)
-ENABLE_DATABASE = _to_boolean(cfg.enable_database)
+from .utils.args import to_bool, to_str
 
 
 class GSpreadPipeline(BaseArticlePipeline):
 
     def setup_exporter(self, spider: BaseArticleSpider):
-        if ENABLE_GSPREAD:
-            self.master = GSpreadMaster(cfg.spreadsheet_title)
+        if to_bool(cfg.enable_gspread):
+            self.master = GSpreadMaster(to_str(cfg.spreadsheet_title))
             self.exporter = GSpreadAIE(
+                spider=spider,
                 enable_postpone_mode=True,
                 writer=GSpreadWriter(
                     worksheet=self.master.get_worksheet_by_spider(spider),
@@ -52,9 +33,10 @@ class GSpreadPipeline(BaseArticlePipeline):
 class BackupGSpreadPipeline(BaseArticlePipeline):
 
     def setup_exporter(self, spider: BaseArticleSpider):
-        if ENABLE_GSPREAD:
-            self.master = GSpreadMaster(cfg.backup_spreadsheet_title)
+        if to_bool(cfg.enable_gspread):
+            self.master = GSpreadMaster(to_str(cfg.backup_spreadsheet_title))
             self.exporter = GSpreadAIE(
+                spider=spider,
                 enable_postpone_mode=False,
                 writer=GSpreadWriter(
                     worksheet=self.master.get_worksheet_by_spider(spider),
@@ -67,8 +49,10 @@ class BackupGSpreadPipeline(BaseArticlePipeline):
 class SQLAlchemyPipeline(BaseArticlePipeline):
 
     def setup_exporter(self, spider: BaseArticleSpider):
-        if ENABLE_DATABASE:
-            self.master = SQLAlchemyMaster(cfg.database_url, cfg.database_table_name)
+        if to_bool(cfg.enable_database):
+            self.master = SQLAlchemyMaster(
+                database_url=to_str(cfg.database_url),
+                table_name=to_str(cfg.database_table_name), )
             self.exporter = SQLAlchemyAIE(
                 enable_postpone_mode=True,
                 writer=SQLAlchemyWriter(

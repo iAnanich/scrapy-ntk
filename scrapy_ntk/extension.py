@@ -7,20 +7,11 @@ from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
 from .tools.cloud import SHub, SHubFetcher
 from .item import FINGERPRINT
+from .utils.args import to_bool, to_str, to_int
 from .utils.check import has_any_type
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def _to_boolean(option: str) -> bool:
-    if option in ['True', '1']:
-        return True
-    elif option in ['False', '0']:
-        return False
-    else:
-        raise RuntimeError('Cannot recognise argument value: {}'
-                           .format(option))
 
 
 class SHubConnector:
@@ -32,7 +23,7 @@ class SHubConnector:
 
     @classmethod
     def from_crawler(cls, crawler):
-        ext = cls(_to_boolean(cfg.enable_shub))
+        ext = cls(to_bool(cfg.enable_shub))
         crawler.signals.connect(ext.spider_opened,
                                 signal=signals.spider_opened)
         return ext
@@ -43,9 +34,9 @@ class SHubConnector:
         elif self.enabled and isinstance(spider, NewsArticleSpider):
             shub = SHub(
                 default_conf={
-                    'api_key': str(cfg.api_key),
-                    'project_id': int(cfg.current_project_id),
-                    'spider_id': int(cfg.current_spider_id),
+                    'api_key': to_str(cfg.api_key, 32),
+                    'project_id': to_int(cfg.current_project_id),
+                    'spider_id': to_int(cfg.current_spider_id),
                 },
             )
             spider.connect_cloud(shub)

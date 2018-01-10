@@ -14,15 +14,7 @@ from .item import (
     ArticleItem,
     URL, FINGERPRINT, DATE
 )
-
-
-def _to_bool(string: str) -> bool:
-    if string in ['True', '1']:
-        return True
-    elif string in ['False', '0']:
-        return False
-    else:
-        raise ValueError('Unknown string value: ' + string)
+from .utils.args import to_bool, to_str
 
 
 class BaseArticleSpider(abc.ABC, Spider):
@@ -36,7 +28,7 @@ class BaseArticleSpider(abc.ABC, Spider):
 
     def __init__(self, *args, **kwargs):
         # check proxy
-        if self._enable_proxy or _to_bool(cfg.enable_proxy):
+        if self._enable_proxy or to_bool(cfg.enable_proxy):
             self._enable_proxy = True
             self._proxy_mode = self._proxy_mode or cfg.proxy_mode
             self.logger.info('Spider set `_enable_proxy=True`.')
@@ -135,7 +127,7 @@ class BaseArticleItemExporter(LoggableBase, BaseItemExporter, abc.ABC):
 
     _writer_type = None
 
-    def __init__(self, *, writer, enable_postpone_mode: bool =True,
+    def __init__(self, *, writer: BaseArticleItemWriter, enable_postpone_mode: bool =True,
                  logger: logging.Logger =None, **kwargs):
         if logger is None:
             logger = self.create_logger()

@@ -1,30 +1,33 @@
 import logging
 from datetime import datetime
 
-from ..base import BaseArticleItemExporter
+from scrapy import Spider
+
+from ..base import BaseArticleItemExporter, BaseArticleItemWriter
 from .g_spread import GSpreadWriter
 from .sql_alchemy import SQLAlchemyWriter
 from ..config import cfg
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-
-def _to_bool(string: str) -> bool:
-    if string in ['True', '1']:
-        return True
-    elif string in ['False', '0']:
-        return False
-    else:
-        raise ValueError('Unknown string value: ' + string)
+from ..utils.args import to_bool, to_str
 
 
 class GSpreadAIE(BaseArticleItemExporter):
 
     empty_cell = '-----'
+    default_spider_name = '-- NOT PROVIDED --'
 
     _writer_type = GSpreadWriter
+
+    def __init__(self, *, writer: BaseArticleItemWriter, spider: Spider,
+                 enable_postpone_mode: bool =True,
+                 logger: logging.Logger =None, **kwargs):
+        super().__init__(
+            writer=writer,
+            enable_postpone_mode=enable_postpone_mode,
+            logger=logger,
+            **kwargs)
+        if spider is None:
+            self.logger.debug('`spider` key-word argument was not provided.')
+        self.spider = spider
 
     @property
     def job_url(self):
@@ -35,11 +38,19 @@ class GSpreadAIE(BaseArticleItemExporter):
 
     @property
     def _start_row(self):
+        if self.spider:
+            spider_name = self.spider.name
+        else:
+            self.logger.warning(
+                f'`spider` key-word argument was not provided. '
+                f'Using `{self.default_spider_name}` string instead it\' name.')
+            spider_name = self.default_spider_name
+
         return dict(
             url=self.empty_cell,
-            header=cfg.gspread_prefixfmt.format(
+            header=to_str(cfg.gspread_prefixfmt).format(
                 date=datetime.now(),
-                name=self._spider.name,
+                name=spider_name,
             ),
             tags=self.job_url,
             text=self.empty_cell,
@@ -51,7 +62,7 @@ class GSpreadAIE(BaseArticleItemExporter):
     def _close_row(self):
         return dict(
             url=self.empty_cell,
-            header=cfg.gspread_suffixfmt.format(
+            header=to_str(cfg.gspread_suffixfmt).format(
                 date=datetime.now(),
                 count=str(len(self._items)),
             ),
@@ -63,10 +74,10 @@ class GSpreadAIE(BaseArticleItemExporter):
 
     def _incapsulate_items(self, items: list) -> list:
         res = []
-        if _to_bool(cfg.gspread_enable_prefix):
+        if to_bool(cfg.gspread_enable_prefix):
             res.append(self._start_row)
         res += items
-        if _to_bool(cfg.gspread_enable_suffix):
+        if to_bool(cfg.gspread_enable_suffix):
             res.append(self._close_row)
         return res
 
