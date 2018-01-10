@@ -7,6 +7,7 @@ from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
 from .tools.cloud import SHub, SHubFetcher
 from .item import FINGERPRINT
+from .utils.check import has_any_type
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -20,10 +21,6 @@ def _to_boolean(option: str) -> bool:
     else:
         raise RuntimeError('Cannot recognise argument value: {}'
                            .format(option))
-
-
-def is_any_instance(obj, *types):
-    return any(isinstance(obj, type_) for type_ in types)
 
 
 class SHubConnector:
@@ -41,7 +38,7 @@ class SHubConnector:
         return ext
 
     def spider_opened(self, spider):
-        if is_any_instance(spider, TestingSpider, WorkerSpider):
+        if has_any_type(spider, TestingSpider, WorkerSpider):
             pass
         elif self.enabled and isinstance(spider, NewsArticleSpider):
             shub = SHub(

@@ -1,6 +1,8 @@
 import abc
 import typing
 
+from .check import has_wrong_type, raise_type_error, check_obj_type
+
 
 class BaseFunc(abc.ABC):
 
@@ -59,43 +61,35 @@ class StronglyTypedFunc(BaseFunc):
         return output_value
 
     def _check_input(self, value):
-        self._check_type(value, self.input_type, 'Input')
+        self._check_type(value, self.input_type, 'input')
 
     def _check_output(self, value):
-        self._check_type(value, self.output_type, 'Output')
+        self._check_type(value, self.output_type, 'output')
 
-    def _check_type(self, value, expected: type or None, action: str ='Given'):
-        if self._is_wrong_type(value, expected):
-            self._raise_type_error(action, value, expected)
-
-    def _is_wrong_type(self, value, expected: type or None):
-        # if `expected` type is `None` it will
-        # return False without `isinstance` call
-        return expected is not None and not isinstance(value, expected)
-
-    def _raise_type_error(self, action: str, value, expected_type: type):
-        raise TypeError(
-            f'{action} value type is {type(value)}, but not {expected_type}')
+    def _check_type(self, value, expected: type or None, action: str):
+        if has_wrong_type(value, expected):
+            raise_type_error(
+                obj_repr=repr(value),
+                obj_type=type(value),
+                obj_name=f'{action.capitalize()} value',
+                expected_obj_type=expected,
+            )
 
 
 class FuncSequence:
 
     func_type = BaseFunc
 
-    def __init__(self, *funcs: BaseFunc):
-        for middleware in funcs:
-            self._check_func_type(middleware)
-        self._list: typing.List[BaseFunc] = list(funcs)
+    def __init__(self, *funcs: func_type):
+        for i, func in enumerate(funcs):
+            check_obj_type(func, self.func_type, f'Callable #{i}')
+        self._list: typing.List[self.func_type] = list(funcs)
 
     def process(self, value):
         for middleware in self._list:
             value = middleware.call(value)
         else:
             return value
-
-    def _check_func_type(self, func):
-        if not isinstance(func, self.func_type):
-            raise TypeError(f'is not `{self.func_type.__name__}` object.')
 
     # some list methods
     def copy(self):
@@ -119,14 +113,14 @@ class FuncSequence:
         del self._list[index]
         return v
 
-    def append(self, func: BaseFunc):
-        self._check_func_type(func)
+    def append(self, func: func_type):
+        check_obj_type(func, self.func_type, f'Callable')
         self._list.append(func)
 
-    def remove(self, value: BaseFunc):
+    def remove(self, value: func_type):
         del self._list[self._list.index(value)]
 
-    def extend(self, funcs: typing.Sequence[BaseFunc]):
-        for func in funcs:
-            self._check_func_type(func)
+    def extend(self, funcs: typing.Sequence[func_type]):
+        for i, func in enumerate(funcs):
+            check_obj_type(func, self.func_type, f'Callable #{i}')
             self._list.append(func)

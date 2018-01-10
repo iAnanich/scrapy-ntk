@@ -4,21 +4,13 @@ from typing import Iterator, Callable, Sequence
 
 from .counter import Threshold, CounterWithThreshold
 from .func import StronglyTypedFunc
+from .check import check_obj_type
 
 
 class ExcludeCheck:
 
-    @classmethod
-    def check_iterator(cls, iterator):
-        if isinstance(iterator, collections.Iterator):
-            pass
-        else:
-            raise TypeError(
-                f'`exclude_iterator` has "{type(iterator)}" type, '
-                f'while generator expected.')
-
     def __init__(self, iterator: Iterator, default=None):
-        self.check_iterator(iterator)
+        check_obj_type(iterator, collections.Iterator, 'Iterator')
         self._iterator = iterator
         self._default = default
         self._is_completed = False
@@ -57,21 +49,15 @@ class Context:
     _exclude_value_type: type = object
 
     def __init__(self, value, exclude_value):
-        self._check_type(value, self._value_type, 'value')
-        self._check_type(exclude_value, self._exclude_value_type, 'exclude_value')
+        check_obj_type(value, self._value_type, 'Value')
+        check_obj_type(exclude_value, self._exclude_value_type, 'Exclude value')
         self._dict = {
             self.VALUE: value,
             self.EXCLUDE_VALUE: exclude_value,
         }
 
-    def _check_type(self, value, value_type: type, name: str):
-        if not isinstance(value, value_type):
-            raise TypeError(
-                f'Passed "{name}" argument has {type(value)} type, '
-                f'but {value_type} expected.')
-
     def set_close_reason(self, message: str):
-        self._check_type(message, str, 'message')
+        check_obj_type(message, str, 'Message')
         if self.close_reason:
             self._dict[self.CLOSE_REASON].append(message)
         else:
@@ -118,8 +104,8 @@ class IterManager:
     _context_processor_output_type = bool
 
     def __init__(self, general_iterator: Iterator,
-                 value_type: type =object, return_type: type =object,
-                 exclude_value_type: type =object,
+                 value_type: type =None, return_type: type =None,
+                 exclude_value_type: type =None,
                  exclude_iterator: Iterator =None, exclude_default=None,
                  max_iterations: int or None =None,
                  max_exclude_matches: int or None =None,
@@ -129,33 +115,24 @@ class IterManager:
                  context_processor: Callable =None,
                  return_value_processor: Callable =None,
                  before_finish: Callable =None):
-        if not isinstance(value_type, type):
-            raise TypeError
+        # `*_type` attributes can be even None because will be only used
+        # by `func.StronglyTypedFunc` that uses `check.check_obj_type`
         self._value_type = value_type
-
-        if not isinstance(return_type, type):
-            raise TypeError
         self._return_type = return_type
-
-        if not isinstance(exclude_value_type, type):
-            raise TypeError
         self._exclude_type = exclude_value_type
 
-        if not isinstance(general_iterator, collections.Iterator):
-            raise TypeError
+        check_obj_type(general_iterator, collections.Iterator, 'General iterator')
         self._general_iterator = general_iterator
 
-        if not isinstance(exclude_default, self._exclude_type):
-            raise TypeError
+        check_obj_type(exclude_default, exclude_value_type, 'Exclude default value')
         self._exclude_default = exclude_default
 
         if exclude_iterator is None:
             exclude_iterator = iter([])  # empty iterator
-        ExcludeCheck.check_iterator(exclude_iterator)
-        self._exclude_iterator = exclude_iterator
         self._exclude_checker = ExcludeCheck(
-            iterator=self._exclude_iterator,
+            iterator=exclude_iterator,
             default=self._exclude_default)
+        self._exclude_iterator = exclude_iterator
 
         self._total_iterations_threshold = Threshold(max_iterations)
         self._total_iterations_counter = CounterWithThreshold(
