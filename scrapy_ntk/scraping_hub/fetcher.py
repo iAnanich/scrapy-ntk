@@ -1,17 +1,22 @@
 import logging
 from typing import Iterator, Iterable, Tuple, Dict, List, Union
+from functools import partial
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from .constants import KEY, CLOSE_REASON_FINISHED, CLOSE_REASON, ITEMS
-from .funcs import spider_id_to_name, iter_job_summaries
+from .constants import (
+    META_KEY, META_ITEMS, META,
+    META_CLOSE_REASON_FINISHED, META_CLOSE_REASON,
+    META_STATE, META_STATE_FINISHED,
+)
+from .funcs import spider_id_to_name
 from .manager import SHub
-from .job import JobKey
+from .job import JobKey, JobSummary
 from ..utils.counter import Threshold
-from ..utils.iter_manager import IterManager, Context
+from ..utils.iter_manager import IterManager, BaseContext
 
 JobNumIter = Iterator[int]
 JobKeyIter = Iterator[str]
@@ -101,7 +106,7 @@ class SHubFetcher:
 
     @classmethod
     def new_helper(cls):
-        logger = logging.getLogger('SHubFetcher: SHub helper')
+        logger = logging.getLogger('SHubFetcher: ScrapinghubManager helper')
         logger.setLevel(logging.ERROR)
         shub = SHub(lazy_mode=True, logger=logger)
         return shub
@@ -154,7 +159,13 @@ class SHubFetcher:
         processed: ClientsTuple = tuple(processed)
         return processed
 
-    iter_job_summaries = staticmethod(iter_job_summaries)
+    iter_job_summaries = staticmethod(partial(
+        JobSummary.iter_from_spider,
+        params={
+            META_STATE: META_STATE_FINISHED,
+            META      : [META_KEY, META_CLOSE_REASON, META_ITEMS],
+        }
+    ))
 
     def latest_spiders_jobkeys(self, spider: Spider,
                                exclude_iterator: JobNumIter) -> JobKeyIter:
@@ -165,50 +176,39 @@ class SHubFetcher:
         not want to get from this method
         :return: iterator that yields job's numbers
         """
-        JOB_KEY = 'job_key'
-        JOB_NUMBER = 'job_num'
-        JOB_CLOSE_REASON = 'job_close_reason'
-        JOB_ITEMS = 'job_items'
 
-        def context_processor(value: dict) -> Context:
-            key: str = JobKey(value[KEY])
-            number: int = JobKey.job_num
-            close_reason: str = value[CLOSE_REASON]
-            items_count: int = value.get(ITEMS, 0)
-            ctx = Context(value=value, exclude_value=number)
-            ctx.update(dict(
-                job_key=key,
-                job_num=number,
-                job_close_reason=close_reason,
-                job_items=items_count,
-            ))
+        def context_processor(value: JobSummary, context_type: type) -> BaseContext:
+            ctx = context_type(value=value, exclude_value=value.jobkey.job_num)
             return ctx
 
-        def before_finish(ctx: Context):
-            self.logger.info(f'Finished on {ctx[JOB_NUMBER]} job number with reason: {ctx.close_reason}')
+        def before_finish(ctx: BaseContext):
+            self.logger.info(
+                f'Finished on {ctx.value.jobkey.job_num} job number '
+                f'with close reason: "{ctx.close_reason}".')
 
-        def return_jobkey(ctx: Context):
-            return ctx[JOB_KEY]
+        def return_jobkey(ctx: BaseContext) -> JobKey:
+            job_summary: JobSummary = ctx.value
+            return job_summary.jobkey
 
-        def unsuccessful_job(ctx: Context):
-            if ctx[JOB_CLOSE_REASON] != CLOSE_REASON_FINISHED:
+        def unsuccessful_job(ctx: BaseContext) -> bool:
+            if not ctx.value.was_successful:
                 self.logger.error(
-                    f'job with {ctx[JOB_KEY]} key finished unsuccessfully.')
+                    f'job with {ctx.value.jobkey} key finished unsuccessfully.')
                 return True
             else:
                 return False
 
-        def empty_job(ctx: Context):
-            if ctx[JOB_ITEMS] < 1:
+        def empty_job(ctx: BaseContext) -> bool:
+            if ctx.value.items < 1:
                 self.logger.info(
-                    f'job with {ctx[JOB_KEY]} key has no items.')
+                    f'job with {ctx.value.jobkey} key has no items.')
                 return True
             else:
                 return False
 
         iter_manager = IterManager(
             general_iterator=self.iter_job_summaries(spider),
-            value_type=dict,
+            value_type=JobSummary,
             return_value_processor=return_jobkey,
             return_type=JobKey,
             exclude_iterator=exclude_iterator,

@@ -29,7 +29,7 @@ from .item import (
 from .parsing import ExtractManager, LinkExtractor
 from .scraping_hub.manager import SHub
 from .scraping_hub.fetcher import SHubFetcher
-from .utils import IterManager, Context
+from .utils import IterManager, BaseContext
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
@@ -112,12 +112,12 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
         scraped_urls_iterator = (item[URL] for item in fetcher.fetch_items())
-        # actual URL can not be None
-        exclude_default = (None, )
+        # actual URL can not be empty
+        exclude_default = ''
 
-        def context_processor(value: Tuple[str, str]) -> Context:
+        def context_processor(value: Tuple[str, str], context_type: type) -> BaseContext:
             url, path = value
-            ctx = Context(value=value, exclude_value=url)
+            ctx = context_type(value=value, exclude_value=url)
             ctx['path'] = path
             return ctx
 
@@ -125,7 +125,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             general_iterator=urls_iterator,
             value_type=tuple,
             return_type=tuple,
-            exclude_value_type=tuple,
+            exclude_value_type=str,
             exclude_default=exclude_default,
             exclude_iterator=scraped_urls_iterator,
             max_exclude_matches=None,  # TODO: move to settings

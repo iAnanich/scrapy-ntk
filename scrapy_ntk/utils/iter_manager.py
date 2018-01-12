@@ -38,7 +38,7 @@ class ExcludeCheck:
         return self._value
 
 
-class Context:
+class BaseContext:
 
     CLOSE_REASON = 'close_reason'
     VALUE = 'value'
@@ -97,10 +97,19 @@ class Context:
         else:
             raise KeyError(f'{key} key can not be assigned in this way.')
 
+    @classmethod
+    def new(cls, value_type: type, exclude_value_type: type,
+            name: str='Context') -> type:
+        attributes = {
+            '_value_type': value_type,
+            '_exclude_value_type': exclude_value_type
+        }
+        return type(name, (cls, ), attributes)
+
 
 class IterManager:
 
-    _context_type = Context
+    _base_context_type = BaseContext
     _context_processor_output_type = bool
 
     def __init__(self, general_iterator: Iterator,
@@ -150,10 +159,13 @@ class IterManager:
         self._total_returned_counter = CounterWithThreshold(
             threshold=self._total_returned_threshold)
 
+        self._context_type = self._base_context_type.new(value_type, exclude_value_type)
+
         if context_processor is None:
-            context_processor = lambda value: Context(value=value, exclude_value=value)
+            context_processor = lambda value: BaseContext(value=value, exclude_value=value)
         self._context_processor = StronglyTypedFunc(
             func=context_processor,
+            kwargs={'context_type': self._context_type},
             input_type=self._value_type,
             output_type=self._context_type, )
 
@@ -180,10 +192,10 @@ class IterManager:
                 output_type=self._context_processor_output_type, )
             for processor in case_processors]
 
-    def _chain_case_processors(self, context: Context) -> bool:
+    def _chain_case_processors(self, context: BaseContext) -> bool:
         """
 
-        :param context: Context object
+        :param context: BaseContext object
         :return: True if any case processor have returned True, else False
         """
         for processor in self._case_processors:
@@ -192,10 +204,10 @@ class IterManager:
         else:
             return False
 
-    def _check_exclude(self, context: Context) -> bool:
+    def _check_exclude(self, context: BaseContext) -> bool:
         """
 
-        :param context: Context object
+        :param context: BaseContext object
         :return: True if value must be returned, else False
         """
         if self._exclude_checker.check_next(context.exclude_value):
@@ -208,10 +220,10 @@ class IterManager:
             self._exclude_matches_counter.drop()
             return True
 
-    def _return(self, context: Context) -> object:
+    def _return(self, context: BaseContext) -> object:
         """
         Increases `total_returned_counter`, and calls `return_value_processor`
-        :param context: Context object
+        :param context: BaseContext object
         :return: returns processed value
         """
         if self._total_returned_counter.add():
@@ -220,7 +232,7 @@ class IterManager:
 
     def __iter__(self):
         for value in self._general_iterator:
-            context: Context = self._context_processor.call(value)
+            context: BaseContext = self._context_processor.call(value)
             if self._chain_case_processors(context):
                 continue
             if self._check_exclude(context):

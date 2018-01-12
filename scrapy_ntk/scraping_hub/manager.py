@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Tuple
-from functools import singledispatch, partial
+from functools import partial
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.projects import Project

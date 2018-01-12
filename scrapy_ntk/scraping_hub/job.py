@@ -1,7 +1,14 @@
 import re
 import typing
 
-from .constants import JOBKEY_SEPARATOR, JOBKEY_PATTERN
+from scrapinghub.client.spiders import Spider
+
+from .constants import (
+    JOBKEY_SEPARATOR, JOBKEY_PATTERN,
+    META_STATE, META_STATE_FINISHED,
+    META_CLOSE_REASON, META_CLOSE_REASON_FINISHED,
+    META_ITEMS, META_KEY, META_SPIDER, META,
+)
 from ..utils.check import check_obj_type
 
 
@@ -30,7 +37,7 @@ class JobKey:
 
     @classmethod
     def concatenate(cls, project_id: int, spider_id: int, job_num: int) -> str:
-        return cls.separator.join(int(i) for i in (project_id, spider_id, job_num))
+        return cls.separator.join(str(i) for i in (project_id, spider_id, job_num))
 
     @classmethod
     def parse(self, string: str) -> AsTupleType:
@@ -47,7 +54,7 @@ class JobKey:
 
     @classmethod
     def from_string(cls, string: str) -> 'JobKey':
-        return JobKey(cls.parse(string))
+        return JobKey.from_tuple(cls.parse(string))
 
     @classmethod
     def from_tuple(cls, tupl: AsTupleType) -> 'JobKey':
@@ -86,3 +93,54 @@ class JobKey:
 
     def __str__(self):
         return self.as_string()
+
+
+class JobSummary:
+
+    def __init__(self, dictionary: typing.Dict[str, typing.Union[str, int]]):
+        try:
+            assert META_KEY in dictionary
+            assert dictionary[META_STATE] == META_STATE_FINISHED  # checks if job was finished
+            assert META_CLOSE_REASON in dictionary
+        except AssertionError as exc:
+            raise ValueError from exc
+        self._dictionary = dictionary
+
+    def get(self, key: str, default=None):
+        return self._dictionary.get(k=key, default=default)
+
+    def __getitem__(self, item: str):
+        return self._dictionary[item]
+
+    def __contains__(self, item):
+        return item in self._dictionary
+
+    @property
+    def jobkey(self) -> JobKey:
+        return JobKey.from_string(self._dictionary[META_KEY])
+
+    @property
+    def close_reason(self) -> str:
+        return self._dictionary[META_CLOSE_REASON]
+
+    @property
+    def state(self) -> str:
+        return self._dictionary[META_STATE]
+
+    @property
+    def items(self) -> int:
+        return self._dictionary.get(META_ITEMS, 0)
+
+    @property
+    def spider_name(self) -> str:
+        return self._dictionary[META_SPIDER]
+
+    @property
+    def was_successful(self) -> bool:
+        return self._dictionary[META_CLOSE_REASON] == META_CLOSE_REASON_FINISHED
+
+    @classmethod
+    def iter_from_spider(cls, spider: Spider, params: dict) \
+            -> typing.Iterator['JobSummary']:
+        for job_dict in spider.jobs.iter(**params):
+            yield cls(job_dict)
