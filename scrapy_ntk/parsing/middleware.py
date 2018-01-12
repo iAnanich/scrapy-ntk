@@ -1,99 +1,32 @@
-import logging
+import typing
 
 from scrapy.selector import SelectorList
 from scrapy.http import HtmlResponse
 
-
-logger = logging.getLogger(__name__)
-
-
-class Middleware:
-
-    _output_type = None
-    _input_type = None
-
-    def __init__(self, func, args: tuple =(), kwargs: dict =None,
-                 input_type: type =None, output_type: type =None):
-        if kwargs is None:
-            kwargs = dict()
-        if not isinstance(args, tuple):
-            raise TypeError('Given `args` are not `tuple` object.')
-        if not isinstance(kwargs, dict):
-            raise TypeError('Given `kwargs` are not `dict` object.')
-        self.function = func
-        self.args = args
-        self.kwargs = kwargs
-        if not input_type:
-            self.input_type = self._input_type
-        else:
-            self.input_type = input_type
-        if not output_type:
-            self.output_type = self._output_type
-        else:
-            self.output_type = output_type
-
-    def call(self, input_value):
-        self._check_input(input_value)
-        output_value = self.function(input_value, *self.args, **self.kwargs)
-        self._check_output(output_value)
-        return output_value
-
-    def _check_input(self, value):
-        self._check_type(value, self.input_type, 'Input')
-
-    def _check_output(self, value):
-        self._check_type(value, self.output_type, 'Output')
-
-    def _check_type(self, value, expected: type, action: str ='Given'):
-        if self._is_wrong_type(value, expected):
-            self._raise_type_error(action, value, expected)
-
-    def _is_wrong_type(self, value, expected: type):
-        return expected is not None and not isinstance(value, expected)
-
-    def _raise_type_error(self, action: str, value, expected_type: type):
-        raise TypeError(
-            '{action} value type is {actual}, but not {expected}'.format(
-                action=action, actual=type(value), expected=expected_type))
+from ..utils.func import StronglyTypedFunc, FuncSequence
 
 
-class MiddlewareContainer(list):
+class MiddlewareContainer(FuncSequence):
 
-    _items_type = 'middleware.Middleware'
-
-    def __init__(self, middleware_list: list):
-        for middleware in middleware_list:
-            self._check_type(middleware)
-        super().__init__(middleware_list)
-
-    def process(self, value):
-        for middleware in self:
-            value = middleware.call(value)
-        else:
-            return value
-
-    def _check_type(self, obj):
-        if not isinstance(obj, Middleware):
-            raise TypeError(f'is not `{self._items_type}` object.')
-
-    def append(self, obj):
-        self._check_type(obj)
-        super().append(obj)
+    def __init__(self, middleware_list: typing.List[StronglyTypedFunc]):
+        super().__init__(*middleware_list)
 
 
-class SelectMiddleware(Middleware):
+class SelectMiddleware(StronglyTypedFunc):
 
-    _input_type = SelectorList
-    _output_type = SelectorList
+    input_type = SelectorList
+    output_type = SelectorList
 
 
+class HTMLMiddleware(StronglyTypedFunc):
+
+    input_type = HtmlResponse
+    output_type = SelectorList
+
+
+# shortcuts
 SMW = SelectMiddleware
-
-
-class HTMLMiddleware(Middleware):
-
-    _input_type = HtmlResponse
-    _output_type = SelectorList
+HMW = HTMLMiddleware
 
 
 # ====================

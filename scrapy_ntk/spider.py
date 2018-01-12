@@ -16,7 +16,7 @@
 """
 
 import abc
-from typing import Iterable, Iterator, Tuple
+from typing import Iterator, Tuple
 from urllib.parse import urlparse, urlunparse
 
 from scrapy import Spider
@@ -27,7 +27,8 @@ from .item import (
     FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
 from .parsing import ExtractManager, LinkExtractor
-from .tools.cloud import SHub, SHubFetcher, IterManager, Context
+from .tools.cloud import SHub, SHubFetcher
+from .utils import IterManager, Context
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
