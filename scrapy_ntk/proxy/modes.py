@@ -1,0 +1,13 @@
+from .web_random import RandomWebProxy, RANDOM_WEB_PROXY_MODE
+
+
+__all__ = (
+    'PROXY_MODES', 'PROXY_DEFAULT_MODE', 'PROXY_MODES_KEYS'
+)
+
+
+PROXY_MODES = {
+    RANDOM_WEB_PROXY_MODE: RandomWebProxy,
+}
+PROXY_MODES_KEYS = frozenset(PROXY_MODES.keys())
+PROXY_DEFAULT_MODE = RANDOM_WEB_PROXY_MODE

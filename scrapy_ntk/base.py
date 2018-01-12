@@ -14,7 +14,8 @@ from .item import (
     ArticleItem,
     URL, FINGERPRINT, DATE
 )
-from .utils.args import to_bool, to_str
+from .utils.args import to_bool, to_str, from_set
+from .proxy.modes import PROXY_MODES
 
 
 class BaseArticleSpider(abc.ABC, Spider):
@@ -30,7 +31,10 @@ class BaseArticleSpider(abc.ABC, Spider):
         # check proxy
         if self._enable_proxy or to_bool(cfg.enable_proxy):
             self._enable_proxy = True
-            self._proxy_mode = self._proxy_mode or cfg.proxy_mode
+            if self._proxy_mode is None:
+                proxy_mode = to_str(cfg.proxy_mode)
+                if from_set(proxy_mode, PROXY_MODES, raise_=True):
+                    self._proxy_mode = proxy_mode
             self.logger.info('Spider set `_enable_proxy=True`.')
             self.logger.info(f'Spider set `_proxy_mode={self._proxy_mode}`.')
 
@@ -82,7 +86,7 @@ class LoggableBase(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def name(self):
+    def name(self) -> str:
         pass
 
 

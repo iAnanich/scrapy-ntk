@@ -7,7 +7,8 @@ from .item import (
     URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
 from .tools.cloud import SCRAPINGHUB_JOBKEY_SEPARATOR
-from .tools.proxy import WEBRANDOMPROXY_URL
+from .proxy.web_random import WEBRANDOMPROXY_URL
+from .proxy.modes import *
 
 JOBKEY_DEFAULT = '0/0/0'
 
