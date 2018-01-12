@@ -7,10 +7,8 @@ from .constants import (
     STATE, STATE_FINISHED, META, KEY, CLOSE_REASON, ITEMS, JOBKEY_SEPARATOR,
 )
 
-# TODO: rename to `funcs`
-
 __all__ = (
-    'shortcut_api_key', 'iter_job_summaries', 'split_jobkey',
+    'shortcut_api_key', 'iter_job_summaries',
     'spider_name_to_id', 'spider_id_to_name',
 )
 
@@ -49,9 +47,3 @@ def spider_id_to_name(spider_id: int, project: Project) -> str:
             return name
     else:
         raise ValueError(f'No such spider with {spider_id} ID found')
-
-
-def split_jobkey(jobkey: str) -> Tuple[int, int, int]:
-    lst = jobkey.split(JOBKEY_SEPARATOR)
-    project_id, spider_id, job_num = [int(s) for s in lst]
-    return project_id, spider_id, job_num

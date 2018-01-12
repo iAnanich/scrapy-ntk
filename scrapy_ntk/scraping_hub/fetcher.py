@@ -1,6 +1,4 @@
-import datetime
 import logging
-import time
 from typing import Iterator, Iterable, Tuple, Dict, List, Union
 
 from scrapinghub import ScrapinghubClient as Client
@@ -8,12 +6,12 @@ from scrapinghub.client.jobs import Job
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
+from .constants import KEY, CLOSE_REASON_FINISHED, CLOSE_REASON, ITEMS
+from .funcs import spider_id_to_name, iter_job_summaries
+from .manager import SHub
+from .job import JobKey
 from ..utils.counter import Threshold
 from ..utils.iter_manager import IterManager, Context
-from .manager import SHub
-from .utils import spider_id_to_name, spider_name_to_id, split_jobkey, iter_job_summaries
-from .constants import KEY, JOBKEY_SEPARATOR, CLOSE_REASON_FINISHED, CLOSE_REASON, STATE_FINISHED, ITEMS
-
 
 JobNumIter = Iterator[int]
 JobKeyIter = Iterator[str]
@@ -173,8 +171,8 @@ class SHubFetcher:
         JOB_ITEMS = 'job_items'
 
         def context_processor(value: dict) -> Context:
-            key: str = value[KEY]
-            number: int = int(split_jobkey(key)[-1])
+            key: str = JobKey(value[KEY])
+            number: int = JobKey.job_num
             close_reason: str = value[CLOSE_REASON]
             items_count: int = value.get(ITEMS, 0)
             ctx = Context(value=value, exclude_value=number)
@@ -212,7 +210,7 @@ class SHubFetcher:
             general_iterator=self.iter_job_summaries(spider),
             value_type=dict,
             return_value_processor=return_jobkey,
-            return_type=str,
+            return_type=JobKey,
             exclude_iterator=exclude_iterator,
             exclude_value_type=int,
             exclude_default=0,
@@ -230,7 +228,7 @@ class SHubFetcher:
     def latest_spiders_jobs(self, spider: Spider,
                             exclude_iterator: JobNumIter) -> JobIter:
         for jobkey in self.latest_spiders_jobkeys(spider, exclude_iterator):
-            yield spider.jobs.get(job_key=jobkey)
+            yield spider.jobs.get(job_key=str(jobkey))
 
     def iter_spider_exclude_tuple(self) -> Tuple[Spider, JobNumIter]:
         for client, projects in self.settings:

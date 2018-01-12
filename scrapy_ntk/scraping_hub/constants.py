@@ -1,3 +1,5 @@
+import re
+
 
 __all__ = (
     'JOBKEY_SEPARATOR',
@@ -8,6 +10,7 @@ __all__ = (
 
 
 JOBKEY_SEPARATOR = '/'
+JOBKEY_PATTERN = re.compile('\d+{sep}\d+{sep}\d+'.format(sep=JOBKEY_SEPARATOR))
 
 STATE = 'state'
 STATE_FINISHED = 'finished'

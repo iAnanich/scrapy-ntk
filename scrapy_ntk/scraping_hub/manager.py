@@ -6,7 +6,7 @@ from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
-from .utils import shortcut_api_key, spider_id_to_name
+from .funcs import shortcut_api_key, spider_id_to_name
 from ..utils.check import check_obj_type, raise_or_none
 
 _logger = logging.getLogger('ScrapingHub interface')
