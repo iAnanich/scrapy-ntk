@@ -91,9 +91,9 @@ class SHubFetcher:
         iterable = list()
 
         settings = {
-            shub.defaults['api_key']: {
-                shub.defaults['project_id']: {
-                    shub.defaults['spider_id']: iterable,
+            shub.defaults.api_key: {
+                shub.defaults.project_id: {
+                    shub.defaults.spider_id: iterable,
                 }
             }
         }

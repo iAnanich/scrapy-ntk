@@ -1,16 +1,146 @@
 import logging
-from typing import Dict
+from typing import Dict, Tuple
+from functools import singledispatch, partial
 
 from scrapinghub import ScrapinghubClient as Client
 from scrapinghub.client.projects import Project
 from scrapinghub.client.spiders import Spider
 
 from .utils import shortcut_api_key, spider_id_to_name
+from ..utils.check import check_obj_type, raise_or_none
+
+_logger = logging.getLogger('ScrapingHub interface')
+_logger.setLevel(logging.DEBUG)
+
+
+class ManagerDefaults:
+
+    API_KEY = 'api_key'
+    PROJECT_ID = 'project_id'
+    SPIDER_ID = 'spider_id'
+    SPIDER_NAME = 'spider_name'
+
+    @classmethod
+    def key_type_dict(cls) -> Tuple[Dict[str, type], ...]:
+        return (
+            {
+                cls.API_KEY: str,
+            },
+            {
+                cls.PROJECT_ID: int,
+            },
+            {
+                cls.SPIDER_ID: int,
+                cls.SPIDER_NAME: str,
+            },
+        )
+
+    @classmethod
+    def keys_tuple(cls) -> tuple:
+        keys = []
+        for d in cls.key_type_dict():
+            keys += list(d.keys())
+        return tuple(keys)
+
+    def __init__(self, config: dict =..., logger: logging.Logger =None):
+        if logger is None:
+            logger = _logger
+        self.logger = logger
+
+        if config is Ellipsis:
+            self._config = dict()
+        else:
+            check_obj_type(config, dict, 'Configuration dictionary')
+            self._config = self.check_conf(config)
+
+    def __getitem__(self, item: str):
+        if item in self.keys_tuple():
+            try:
+                return self._config[item]
+            except KeyError:
+                raise KeyError(
+                    f'Given {item} key not found in defaults.'
+                ) from None
+        else:
+            raise KeyError(
+                f'{item} defaults key is not supported.'
+            ) from None
+
+    def check_conf(self, config: dict) -> dict:
+        processed = dict()
+
+        for type_dict in self.key_type_dict():
+            raise_: dict = None
+            break_ = True
+            for key, expected_type in type_dict.items():
+                try:
+                    value = config[key]
+                    break_ = False
+                except KeyError:
+                    break_ = True
+                else:
+                    if not isinstance(value, expected_type):
+                        raise_ = {
+                            'key': key,
+                            'value': value,
+                            'value_type': type(value),
+                            'expected_type': expected_type,
+                        }
+                        break
+                    processed[key] = value
+
+            if raise_:
+                msg = str(
+                    f'Config var with {raise_["key"]} has not valid type.'
+                    f'{raise_["expected_type"]} expected, got {raise_["value_type"]}')
+                self.logger.error(msg)
+                raise TypeError(msg)
+            if break_:
+                break
+
+        return processed
+
+    @raise_or_none(KeyError)
+    def client(self, api_key: bool =True) -> str:
+        if api_key:
+            return self[self.API_KEY]
+        else:
+            raise ValueError
+
+    @raise_or_none(KeyError)
+    def project(self, id_: bool =True) -> int:
+        if id_:
+            return self[self.PROJECT_ID]
+        else:
+            raise ValueError
+
+    @raise_or_none(KeyError)
+    def spider(self, *, id_: bool =True, name: bool =False) -> int or str:
+        if id_ and name:
+            raise ValueError(
+                f'Only spider\'s name or ID can be returned.'
+            )
+        elif id_:
+            return self[self.SPIDER_ID]
+        elif name:
+            return self[self.SPIDER_NAME]
+        else:
+            raise ValueError(
+                f'`id_` or `name` key-word arguments must be `True`.'
+            )
+
+    api_key = property(partial(client, api_key=True, raise_=False))
+    project_id = property(partial(project, id_=True, raise_=False))
+    spider_id = property(partial(spider, id_=True, name=False, raise_=False))
+    spider_name = property(partial(spider, id_=False, name=True, raise_=False))
 
 
 class SHub:
 
+    shortcut_api_key = staticmethod(shortcut_api_key)
+
     def __init__(self, *, lazy_mode: bool =False,
+                 defaults: ManagerDefaults or None =None,
                  default_conf: dict or None =None,
                  initial_conf: dict or None =None,
                  logger: logging.Logger = None):
@@ -20,11 +150,12 @@ class SHub:
         :param initial_conf: dictionary for `switch` method.
         """
         if logger is None:
-            logger = logging.getLogger('ScrapingHub interface')
-            logger.setLevel(logging.DEBUG)
+            logger = _logger
         self.logger = logger
 
-        self.defaults = self.Defaults(self, self.logger, default_conf)
+        if defaults is None and default_conf is not None:
+            defaults = ManagerDefaults(default_conf, logger=self.logger)
+        self.defaults = defaults
 
         self._is_lazy = lazy_mode
 
@@ -37,63 +168,6 @@ class SHub:
             # call below must start chain of `switch_` calls
             self.switch_client()
 
-    class Defaults:
-
-        @classmethod
-        def key_type_dict(cls) -> Dict[str, type]:
-            # TODO: make it possible to pass spider's ID (for example, by using tuples)
-            return {
-                'api_key': str,
-                'project_id': int,
-                'spider_id': int,
-            }
-
-        @classmethod
-        def keys_tuple(cls) -> tuple:
-            return tuple(cls.key_type_dict().keys())
-
-        def __init__(self, shub, logger, config: dict or None):
-            self.shub = shub
-            self.logger = logger
-
-            if config is None:
-                self.config = dict()
-            else:
-                self.config = self.check_conf(config)
-
-        def __getitem__(self, item: str):
-            if item in self.keys_tuple():
-                try:
-                    return self.config[item]
-                except KeyError:
-                    raise KeyError(
-                        f''
-                    ) from None
-            else:
-                raise KeyError(
-                    f'{item} defaults key is not supported.'
-                ) from None
-
-        def check_conf(self, config: dict) -> dict:
-            processed = dict()
-
-            for key, var_type in self.key_type_dict().items():
-                try:
-                    var = config[key]
-                except KeyError:
-                    break
-                if not isinstance(var, var_type):
-                    msg = str(
-                        f'Config var with {key} has not valid type.'
-                        f'{var_type} expected, got {type(var)}')
-                    self.logger.error(msg)
-                    raise TypeError(msg)
-                processed[key] = var
-
-            return processed
-
-    shortcut_api_key = staticmethod(shortcut_api_key)
-
     @property
     def unset(self):
         return None
@@ -101,6 +175,13 @@ class SHub:
     @property
     def is_lazy(self) -> bool:
         return self._is_lazy
+
+    def set_defaults(self, defaults: ManagerDefaults):
+        check_obj_type(defaults, ManagerDefaults, 'Manager defaults')
+        self.defaults = defaults
+
+    def __repr__(self):
+        return f''
 
     """
     Entity properties, that returns instances of `scrapinghub` library's
@@ -170,8 +251,17 @@ class SHub:
             raise ValueError(f'Can not change `spider` while '
                              f'`project` is not set (=`{self.unset}`)')
         if spider_name is None:
-            spider_id = self.defaults['spider_id']
-            spider_name = spider_id_to_name(spider_id, self.project)
+            spider_name = self.defaults.spider_name
+            if spider_name is None:
+                spider_id = self.defaults.spider_id
+                if spider_id is None:
+                    msg = str(
+                        f'Trying to switch to default spider, '
+                        f'but no spider-related data found in defaults.'
+                    )
+                    self.logger.error(msg)
+                    raise RuntimeError(msg)
+                spider_name = spider_id_to_name(spider_id, self.project)
         spider = self._switch_spider(spider_name)
         return spider
 
@@ -180,14 +270,14 @@ class SHub:
             raise ValueError(f'Can not change `project` while '
                              f'`client` is not set (=`{self.unset}`)')
         if project_id is None:
-            project_id = self.defaults['project_id']
+            project_id = self.defaults.project_id
         project = self._switch_project(project_id)
         self.reset_spider()
         return project
 
     def switch_client(self, api_key: str or None =None) -> Client:
         if api_key is None:
-            api_key = self.defaults['api_key']
+            api_key = self.defaults.api_key
         client = self._switch_client(api_key)
         self.reset_project()
         return client

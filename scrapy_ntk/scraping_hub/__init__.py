@@ -1,6 +1,6 @@
 from .constants import *
 from .utils import *
-from .manager import SHub
+from .manager import SHub, ManagerDefaults
 from .fetcher import SHubFetcher
 
 # TODO create class for JobKey with `memoryview` module
