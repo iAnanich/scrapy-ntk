@@ -40,13 +40,39 @@ def check_obj_type(obj, expected_obj_type: TypeOrNone, obj_name: str ='object'):
         )
 
 
-def raise_or_none(func):
-    def wrapped(*args, raise_=True, **kwargs):
-        if raise_:
-            return func(*args, **kwargs)
+def raise_or_none(func, *exceptions):
+    if callable(func) and not isinstance(func, type):
+        def wrapped(*args, raise_=True, **kwargs):
+            if raise_:
+                return func(*args, **kwargs)
 
-        try:
-            return func(*args, **kwargs)
-        except:
-            return None
-    return wrapped
+            try:
+                return func(*args, **kwargs)
+            except:
+                return None
+        return wrapped
+    if issubclass(func, Exception):
+        exceptions = tuple([func, *exceptions])
+        def wrapper(func):
+            def wrapped(*args, raise_=True, **kwargs):
+                if raise_:
+                    return func(*args, **kwargs)
+
+                try:
+                    return func(*args, **kwargs)
+                except exceptions:
+                    return None
+            return wrapped
+        return wrapper
+    elif callable(func):
+        def wrapped(*args, raise_=True, **kwargs):
+            if raise_:
+                return func(*args, **kwargs)
+
+            try:
+                return func(*args, **kwargs)
+            except:
+                return None
+        return wrapped
+    else:
+        raise_type_error(repr(func), type(func), typing.Union[typing.Callable, Exception])
