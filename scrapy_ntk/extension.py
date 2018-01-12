@@ -3,7 +3,7 @@ import logging
 from scrapy import signals
 
 from .config import cfg
-from .scraping_hub.manager import SHub, ManagerDefaults
+from .scraping_hub.manager import ScrapinghubManager, ManagerDefaults
 from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .utils.args import to_bool, to_str, to_int
 from .utils.check import has_any_type
@@ -30,10 +30,10 @@ class SHubConnector:
         if has_any_type(spider, TestingSpider, WorkerSpider):
             pass
         elif self.enabled and isinstance(spider, NewsArticleSpider):
-            defaults = ManagerDefaults({
-                'api_key': to_str(cfg.api_key, 32),
-                'project_id': to_int(cfg.current_project_id),
-                'spider_id': to_int(cfg.current_spider_id),
-            })
-            shub = SHub(defaults=defaults)
+            defaults = ManagerDefaults(
+                api_key=to_str(cfg.api_key, 32),
+                project_id=to_int(cfg.current_project_id),
+                spider_id=to_int(cfg.current_spider_id),
+            )
+            shub = ScrapinghubManager(defaults=defaults)
             spider.connect_cloud(shub)

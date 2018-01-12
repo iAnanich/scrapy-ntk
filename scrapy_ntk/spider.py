@@ -27,7 +27,7 @@ from .item import (
     FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
 from .parsing import ExtractManager, LinkExtractor
-from .scraping_hub.manager import SHub
+from .scraping_hub.manager import ScrapinghubManager
 from .scraping_hub.fetcher import SHubFetcher
 from .utils import IterManager, BaseContext
 
@@ -71,14 +71,14 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     _default_request_meta = {}
 
     def __init__(self, *args, **kwargs):
-        self.cloud: SHub = None
+        self.cloud: ScrapinghubManager = None
         # call it to check
         self.extract_manager = self.setup_extract_manager()
         self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
-    def connect_cloud(self, cloud: SHub):
+    def connect_cloud(self, cloud: ScrapinghubManager):
         self.cloud = cloud
         self.logger.info(f'{type(cloud)} connected.')
 

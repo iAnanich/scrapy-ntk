@@ -42,16 +42,22 @@ class ManagerDefaults:
             keys += list(d.keys())
         return tuple(keys)
 
-    def __init__(self, config: dict =..., logger: logging.Logger =None):
+    def __init__(self, api_key: str =None,
+                 project_id: int =None,
+                 spider_id: int =None,
+                 spider_name: str =None,
+                 logger: logging.Logger =None):
         if logger is None:
             logger = _logger
         self.logger = logger
 
-        if config is Ellipsis:
-            self._config = dict()
-        else:
-            check_obj_type(config, dict, 'Configuration dictionary')
-            self._config = self.check_conf(config)
+        input_kwargs = {
+            self.API_KEY: api_key,
+            self.PROJECT_ID: project_id,
+            self.SPIDER_ID: spider_id,
+            self.SPIDER_NAME: spider_name,
+        }
+        self._config = self.check_conf({k: v for k, v in input_kwargs.items() if v is not None})
 
     def __getitem__(self, item: str):
         if item in self.keys_tuple():
@@ -135,7 +141,7 @@ class ManagerDefaults:
     spider_name = property(partial(spider, id_=False, name=True, raise_=False))
 
 
-class SHub:
+class ScrapinghubManager:
 
     shortcut_api_key = staticmethod(shortcut_api_key)
 
@@ -154,7 +160,7 @@ class SHub:
         self.logger = logger
 
         if defaults is None and default_conf is not None:
-            defaults = ManagerDefaults(default_conf, logger=self.logger)
+            defaults = ManagerDefaults(**default_conf, logger=self.logger)
         self.defaults = defaults
 
         self._is_lazy = lazy_mode

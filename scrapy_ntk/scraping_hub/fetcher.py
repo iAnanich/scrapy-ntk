@@ -13,7 +13,7 @@ from .constants import (
     META_STATE, META_STATE_FINISHED,
 )
 from .funcs import spider_id_to_name
-from .manager import SHub
+from .manager import ScrapinghubManager
 from .job import JobKey, JobSummary
 from ..utils.counter import Threshold
 from ..utils.iter_manager import IterManager, BaseContext
@@ -50,6 +50,8 @@ class SHubFetcher:
     def __init__(self, settings: SettingsInputType, *,
                  maximum_fetched_jobs: int or None =None,
                  maximum_excluded_matches: int or None =None,
+                 maximum_returned_jobs: int or None =None,
+                 maximum_total_excluded: int or None =None,
                  logger: logging.Logger=None):
         """
         For example you have `1234567887654321123567887654321` API key, `274629`
@@ -85,11 +87,13 @@ class SHubFetcher:
 
         self.maximum_excluded_matches = maximum_excluded_matches
         self.maximum_fetched_jobs = maximum_fetched_jobs
+        self.maximum_returned_jobs = maximum_returned_jobs
+        self.maximum_total_excluded = maximum_total_excluded
 
         self.settings = self.process_settings(settings)
 
     @classmethod
-    def from_shub_defaults(cls, shub: SHub):
+    def from_shub_defaults(cls, shub: ScrapinghubManager):
         # use empty list to get all jobs
         iterable = list()
 
@@ -108,7 +112,7 @@ class SHubFetcher:
     def new_helper(cls):
         logger = logging.getLogger('SHubFetcher: ScrapinghubManager helper')
         logger.setLevel(logging.ERROR)
-        shub = SHub(lazy_mode=True, logger=logger)
+        shub = ScrapinghubManager(lazy_mode=True, logger=logger)
         return shub
 
     @classmethod
@@ -216,6 +220,8 @@ class SHubFetcher:
             exclude_default=0,
             max_iterations=self.maximum_fetched_jobs,
             max_exclude_matches=self.maximum_excluded_matches,
+            max_returned_values=self.maximum_returned_jobs,
+            max_total_excluded=self.maximum_total_excluded,
             before_finish=before_finish,
             context_processor=context_processor,
             case_processors=(unsuccessful_job, empty_job),
