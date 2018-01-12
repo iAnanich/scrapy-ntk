@@ -27,8 +27,9 @@ from .item import (
     FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
 from .parsing import ExtractManager, LinkExtractor
-from .tools.cloud import SHub, SHubFetcher
-from .utils import IterManager, Context
+from .scraping_hub.manager import ScrapinghubManager
+from .scraping_hub.fetcher import SHubFetcher
+from .utils import IterManager, BaseContext
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
@@ -70,14 +71,14 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     _default_request_meta = {}
 
     def __init__(self, *args, **kwargs):
-        self.cloud: SHub = None
+        self.cloud: ScrapinghubManager = None
         # call it to check
         self.extract_manager = self.setup_extract_manager()
         self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
-    def connect_cloud(self, cloud: SHub):
+    def connect_cloud(self, cloud: ScrapinghubManager):
         self.cloud = cloud
         self.logger.info(f'{type(cloud)} connected.')
 
@@ -111,12 +112,12 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
         scraped_urls_iterator = (item[URL] for item in fetcher.fetch_items())
-        # actual URL can not be None
-        exclude_default = (None, )
+        # actual URL can not be empty
+        exclude_default = ''
 
-        def context_processor(value: Tuple[str, str]) -> Context:
+        def context_processor(value: Tuple[str, str], context_type: type) -> BaseContext:
             url, path = value
-            ctx = Context(value=value, exclude_value=url)
+            ctx = context_type(value=value, exclude_value=url)
             ctx['path'] = path
             return ctx
 
@@ -124,7 +125,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             general_iterator=urls_iterator,
             value_type=tuple,
             return_type=tuple,
-            exclude_value_type=tuple,
+            exclude_value_type=str,
             exclude_default=exclude_default,
             exclude_iterator=scraped_urls_iterator,
             max_exclude_matches=None,  # TODO: move to settings

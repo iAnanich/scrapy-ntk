@@ -1,12 +1,10 @@
 import logging
 
-from scrapy.exceptions import NotConfigured
 from scrapy import signals
 
-from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
-from .tools.cloud import SHub, SHubFetcher
-from .item import FINGERPRINT
+from .scraping_hub.manager import ScrapinghubManager, ManagerDefaults
+from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .utils.args import to_bool, to_str, to_int
 from .utils.check import has_any_type
 
@@ -32,11 +30,10 @@ class SHubConnector:
         if has_any_type(spider, TestingSpider, WorkerSpider):
             pass
         elif self.enabled and isinstance(spider, NewsArticleSpider):
-            shub = SHub(
-                default_conf={
-                    'api_key': to_str(cfg.api_key, 32),
-                    'project_id': to_int(cfg.current_project_id),
-                    'spider_id': to_int(cfg.current_spider_id),
-                },
+            defaults = ManagerDefaults(
+                api_key=to_str(cfg.api_key, 32),
+                project_id=to_int(cfg.current_project_id),
+                spider_id=to_int(cfg.current_spider_id),
             )
+            shub = ScrapinghubManager(defaults=defaults)
             spider.connect_cloud(shub)

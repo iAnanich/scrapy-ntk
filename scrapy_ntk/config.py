@@ -6,11 +6,11 @@ from .item import (
     FIELDS,
     URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
-from .tools.cloud import SCRAPINGHUB_JOBKEY_SEPARATOR
+from .scraping_hub.constants import JOBKEY_SEPARATOR as SCRAPINGHUB_JOBKEY_SEPARATOR
 from .proxy.web_random import WEBRANDOMPROXY_URL
 from .proxy.modes import *
 
-JOBKEY_DEFAULT = '0/0/0'
+JOBKEY_DEFAULT = SCRAPINGHUB_JOBKEY_SEPARATOR.join(str(i) for i in [0, 0, 0])
 
 # variable names
 _JOBKEY = 'SHUB_JOBKEY'
