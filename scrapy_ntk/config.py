@@ -6,10 +6,11 @@ from .item import (
     FIELDS,
     URL, FINGERPRINT, TEXT, TAGS, DATE, HEADER, MEDIA, ERRORS
 )
-from .tools.cloud import SCRAPINGHUB_JOBKEY_SEPARATOR
-from .tools.proxy import WEBRANDOMPROXY_URL
+from .scraping_hub.constants import JOBKEY_SEPARATOR as SCRAPINGHUB_JOBKEY_SEPARATOR
+from .proxy.web_random import WEBRANDOMPROXY_URL
+from .proxy.modes import *
 
-JOBKEY_DEFAULT = '0/0/0'
+JOBKEY_DEFAULT = SCRAPINGHUB_JOBKEY_SEPARATOR.join(str(i) for i in [0, 0, 0])
 
 # variable names
 _JOBKEY = 'SHUB_JOBKEY'
@@ -229,8 +230,14 @@ class SettingsMaster:
 
     @property
     def database_url(self) -> str:
-        from .tools import web
-        remote_url = web.get_response_content(self.get_value("DATABASE_AUTH_URL"))
+        import requests
+        r: requests.Response = requests.get(self.get_value("DATABASE_AUTH_URL"))
+        if r.status_code == 200:
+            remote_url = r.content.decode('utf-8')
+        elif r.status_code == 403:
+            raise RuntimeError('Wrong URL.')
+        else:
+            raise RuntimeError('Unexpected status code.')
         return self.get_value(
             'DATABASE_URL',
             json_only=False,

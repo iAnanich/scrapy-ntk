@@ -4,14 +4,16 @@ from setuptools import setup
 def do_setup():
     setup(
         name='scrapy_ntk',
-        version='1.8',
+        version='1.9',
         license='MIT',
         author='Illia Ananich',
         author_email='illia.ananich@gmail.com',
         packages=[
             'scrapy_ntk',
             'scrapy_ntk.exporting',
-            'scrapy_ntk.tools',
+            'scrapy_ntk.proxy',
+            'scrapy_ntk.utils',
+            'scrapy_ntk.scraping_hub',
             'scrapy_ntk.parsing',
         ],
         install_requires=[

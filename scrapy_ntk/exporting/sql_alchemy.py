@@ -74,11 +74,11 @@ class SQLAlchemyMaster:
 
 class SQLAlchemyWriter(BaseArticleItemWriter):
 
-    def __init__(self, session: Session, Model: DECLARATIVE_BASE, **kwargs):
+    def __init__(self, session: Session, declarative_model_class: DECLARATIVE_BASE, **kwargs):
         if not isinstance(session, Session):
             raise TypeError
         self._session = session
-        self._Model = Model
+        self._Model = declarative_model_class
 
         super().__init__(**kwargs)
 
@@ -107,3 +107,6 @@ class SQLAlchemyWriter(BaseArticleItemWriter):
             for i, item in enumerate(items):
                 msg += f'\n\t{i:4}. {item}'
             self.logger.debug(msg)
+
+    def __repr__(self):
+        return f'<{self.name} : {self._Model}>'
