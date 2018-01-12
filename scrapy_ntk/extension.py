@@ -1,12 +1,10 @@
 import logging
 
-from scrapy.exceptions import NotConfigured
 from scrapy import signals
 
-from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .config import cfg
-from .tools.cloud import SHub, SHubFetcher
-from .item import FINGERPRINT
+from .scraping_hub import SHub
+from .spider import NewsArticleSpider, TestingSpider, WorkerSpider
 from .utils.args import to_bool, to_str, to_int
 from .utils.check import has_any_type
 

@@ -27,7 +27,8 @@ from .item import (
     FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
 from .parsing import ExtractManager, LinkExtractor
-from .tools.cloud import SHub, SHubFetcher
+from .scraping_hub.manager import SHub
+from .scraping_hub.fetcher import SHubFetcher
 from .utils import IterManager, Context
 
 
