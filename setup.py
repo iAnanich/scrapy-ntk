@@ -11,7 +11,9 @@ def do_setup():
         packages=[
             'scrapy_ntk',
             'scrapy_ntk.exporting',
-            'scrapy_ntk.tools',
+            'scrapy_ntk.proxy',
+            'scrapy_ntk.utils',
+            'scrapy_ntk.scraping_hub',
             'scrapy_ntk.parsing',
         ],
         install_requires=[
