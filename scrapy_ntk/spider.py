@@ -67,7 +67,6 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     _extract_manager = None
 
-    _use_proxy = False
     _default_request_meta = {}
 
     def __init__(self, *args, **kwargs):
@@ -110,6 +109,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             response, **self.extract_manager.extract_all(response))
 
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
+        if self.cloud is None:
+            # pass all incoming URLs
+            return urls_iterator
+
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
         scraped_urls_iterator = (item[URL] for item in fetcher.fetch_items())
         # actual URL can not be empty
