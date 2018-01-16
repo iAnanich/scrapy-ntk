@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 from scrapy import signals
 
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-class SHubConnector:
+class ScrapinghubManagerConnector:
 
     def __init__(self, enable):
         self.enabled = enable
@@ -37,3 +38,11 @@ class SHubConnector:
             )
             shub = ScrapinghubManager(defaults=defaults)
             spider.connect_cloud(shub)
+
+
+class SHubConnector(ScrapinghubManagerConnector):
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(f'Use "ScrapinghubManagerConnector" instead.')
+
+        super().__init__(*args, **kwargs)
