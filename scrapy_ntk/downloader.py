@@ -21,7 +21,7 @@ class ProxyManagerDM:
         return new
 
     def spider_opened(self, spider: BaseArticleSpider):
-        if not isinstance(spider, WorkerSpider):
+        if isinstance(spider, BaseArticleSpider):
             self.enable = spider.enable_proxy
             if self.enable:
                 self.proxy_manager = ProxyManager(spider.proxy_mode)

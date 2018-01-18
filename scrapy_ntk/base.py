@@ -7,7 +7,7 @@ from typing import List
 
 from scrapy import Spider
 from scrapy.exporters import BaseItemExporter
-from scrapy.http import Response
+from scrapy.http import Response, Request
 
 from .config import cfg
 from .item import (
@@ -16,6 +16,7 @@ from .item import (
 )
 from .utils.args import to_bool, to_str, from_set
 from .proxy.modes import PROXY_MODES
+from .utils.helpers import collect_kwargs
 
 
 class BaseArticleSpider(abc.ABC, Spider):
@@ -24,6 +25,10 @@ class BaseArticleSpider(abc.ABC, Spider):
     _proxy_mode = None
 
     _article_item_class = ArticleItem
+
+    _meta_fingerprint_key = f'article__{FINGERPRINT}'
+
+    _default_request_meta: dict = None
 
     name: str = None
 
@@ -49,7 +54,7 @@ class BaseArticleSpider(abc.ABC, Spider):
         :return: yields `ArticleItem` instance
         """
         try:
-            fingerprint = response.meta['fingerprint']
+            fingerprint = response.meta[self._meta_fingerprint_key]
         except KeyError:
             # case when used with `crawl` command
             fingerprint = self.get_random_fingerprint()
@@ -59,6 +64,19 @@ class BaseArticleSpider(abc.ABC, Spider):
             DATE: datetime.now()
         })
         yield self._article_item_class(**kwargs)
+
+    def new_request(self, url, callback=None, method='GET', headers=None,
+                    body=None, cookies=None, meta=None, encoding='utf-8',
+                    priority=0, dont_filter=False, errback=None, flags=None):
+        kwargs = collect_kwargs(locals())
+        return Request(**kwargs)
+
+    @property
+    def request_meta(self):
+        if self._default_request_meta:
+            meta = self._default_request_meta.copy()
+            return meta
+        return {}
 
     @staticmethod
     def get_random_fingerprint():
@@ -336,7 +354,7 @@ class BaseExtractor(LoggableBase, abc.ABC):
         self._fields_storage = {field: None for field in self.fields}
         self._is_ready = False
 
-    def create_logger(self):
+    def create_logger(self, name=None):
         logger = logging.getLogger(self.name)
         logger.setLevel(logging.DEBUG)
         return logger

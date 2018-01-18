@@ -19,12 +19,13 @@ import abc
 from typing import Iterator, Tuple
 from urllib.parse import urlparse, urlunparse
 
-from scrapy import Spider
-from scrapy.http import Response, Request
+from scrapy import Spider, Request
+from scrapy.selector import Selector
+from scrapy.http import HtmlResponse
 
 from .base import BaseArticleSpider
 from .item import (
-    FINGERPRINT, TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
+    TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
 from .parsing import ExtractManager, LinkExtractor
 from .scraping_hub.manager import ScrapinghubManager
@@ -67,8 +68,6 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
     _extract_manager = None
 
-    _default_request_meta = {}
-
     def __init__(self, *args, **kwargs):
         self.cloud: ScrapinghubManager = None
         # call it to check
@@ -85,7 +84,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     #  "parse" methods
     # =================
     # there are "callbacks" that scrapes data from page (response)
-    def parse(self, response: Response):
+    def parse(self, response: HtmlResponse):
         """
         "callback" for "news-list page" that yields requests to "article pages"
         with `parse_article` "callback".
@@ -93,20 +92,21 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         :return: yields requests to "article pages"
         """
         # parse response and yield requests with `parse_article` "callback"
-        urls_iterator = self._yield_urls_from_response(response)
+        urls_iterator = self._yield_urls_from_selector(response.selector)
         for url, path in self._get_urls_iterator(urls_iterator):
             fingerprint = self._convert_path_to_fingerprint(path)
             meta = self.request_meta
-            meta.update({FINGERPRINT: fingerprint})
-            yield Request(url=url,
-                          callback=self.parse_article,
-                          meta=meta)
+            meta.update({self._meta_fingerprint_key: fingerprint})
+            yield self.new_request(
+                url=url,
+                callback=self.parse_article,
+                meta=meta, )
 
-    def parse_article(self, response: Response):
+    def parse_article(self, response: HtmlResponse):
         self.logger.info('Started extracting from {}'.format(response.url))
         # produce item
         yield from self._yield_article_item(
-            response, **self.extract_manager.extract_all(response))
+            response, **self.extract_manager.extract_all(response.selector))
 
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         if self.cloud is None:
@@ -136,14 +136,14 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         )
         return iter(iter_manager)
 
-    def _yield_urls_from_response(self, response: Response):
+    def _yield_urls_from_selector(self, selector: Selector):
         """
         Parses response from "news-list page" and yields requests to
         "article pages" that aren't scraped yet.
-        :param response: `scrapy.http.Response` from "news-list page"
+        :param selector: selector from "news-list page"
         :return: yield `scrapy.http.Request` instance
         """
-        for path_or_url in self._link_extractor.safe_extract_from(response):
+        for path_or_url in self._link_extractor.safe_extract_from(selector):
             if '://' in path_or_url:
                 url = path_or_url
                 path = urlparse(url)[2]
@@ -166,13 +166,9 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             scheme=self._check_field_implementation('_scheme'),
             domain=self._check_field_implementation('_start_domain'),
             path=self._check_field_implementation('_start_path'))
-        request = Request(url, callback=self.parse, meta=self.request_meta)
-        yield request
-
-    @property
-    def request_meta(self):
-        meta = self._default_request_meta.copy()
-        return meta
+        news_page_request = self.new_request(
+            url=url, callback=self.parse, meta=self.request_meta)
+        yield news_page_request
 
     def setup_extract_manager(self) -> ExtractManager:
         extractors = [
@@ -218,7 +214,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 
 
 class TestingSpider(BaseArticleSpider, abc.ABC):
-    def parse(self, response: Response):
+
+    def parse(self, response: HtmlResponse):
         yield from self._yield_article_item(
             response, **{
                 TAGS: '--',
