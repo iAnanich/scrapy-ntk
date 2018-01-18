@@ -8,7 +8,7 @@ from ..utils.func import StronglyTypedFunc, FuncSequence
 
 class MiddlewareContainer(FuncSequence):
 
-    def __init__(self, middleware_list: typing.List[StronglyTypedFunc, ...]):
+    def __init__(self, middleware_list: typing.List[StronglyTypedFunc]):
         warnings.warn('Use `utils.func.FuncSequence` class instead.')
         super().__init__(*middleware_list)
 
