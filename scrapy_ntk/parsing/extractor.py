@@ -1,7 +1,8 @@
 from scrapy.selector import SelectorList
 
 from .parser import Parser, MediaCounter, ElementsChain
-from .middleware import HTMLMiddleware, MiddlewareContainer, select
+from ..utils.func import FuncSequence
+from .middleware import HtmlMiddleware, select
 from .base_extractor import (
     LINK, TEXT, ERRORS, MEDIA, TAGS, HEADER,
     VoidExtractor, GeneratorCSSExtractor, JoinableExtractor,
@@ -122,8 +123,8 @@ class TextExtractor(TextExtractorMixin, JoinableExtractor):
         if not isinstance(media_counter_class(), MediaCounter):
             raise RuntimeError('Given `media_counter` is not inherited from '
                                '`parser.MediaCounter` class.')
-        self.middleware_container = MiddlewareContainer([
-            HTMLMiddleware(select, args=(string_css_selector,), )
+        self.middleware_container = FuncSequence([
+            HtmlMiddleware(select, args=(string_css_selector,), )
         ])
         if middleware_list:
             for middleware in middleware_list:
