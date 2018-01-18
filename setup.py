@@ -17,13 +17,12 @@ def do_setup():
             'scrapy_ntk.parsing',
         ],
         install_requires=[
-            'scrapinghub>=2.0.0',
-            'Scrapy>=1.4.0',
-            'gspread>=0.6.0',
-            'SQLAlchemy>=1.1.0',
-            'oauth2client>=4.1.0',
-            'postgres>=2.2.0',
-            'msgpack-python>=0.4.0',
+            'scrapinghub>=2.0.0, <3.0',
+            'Scrapy>=1.5.0, <2.0',
+            'gspread>=0.6.0, <1.0',
+            'SQLAlchemy>=1.2.0, <2.0',
+            'oauth2client>=4.1.0, <5.0',
+            'msgpack-python>=0.4.0, <1.0',
         ]
     )
 
