@@ -16,6 +16,7 @@
 """
 
 import abc
+import warnings
 from typing import Iterator, Tuple
 from urllib.parse import urlparse, urlunparse
 
@@ -27,7 +28,7 @@ from .base import BaseArticleSpider
 from .item import (
     TAGS, TEXT, HEADER, MEDIA, ERRORS, URL,
 )
-from .parsing import ExtractManager, LinkExtractor
+from .parsing import ExtractManager, LinkExplorer
 from .scraping_hub.manager import ScrapinghubManager
 from .scraping_hub.fetcher import SHubFetcher
 from .utils import IterManager, BaseContext
@@ -47,24 +48,23 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     name: str = None
 
     # URL path to the "news-list page". Used for `start_urls` field.
-    # Must be a string. Minimal value: ''
-    _start_path = None
+    # Must be a string. Minimum value: ''
+    _start_path: str = None
 
     # URL host of the web-site. Used for `allowed_domains` field.
     # Must be a string. Example: 'www.example.com'
-    _start_domain = None
+    _start_domain: str = None
 
     # URL scheme. Allowed values: 'http', 'https'
-    _scheme = None
+    _scheme: str = None
 
     # Extractors used to extract needed data from HTML
     # Must be `Extractor` instances.
-    _link_extractor: LinkExtractor = None
     _header_extractor = None
     _tags_extractor = None
     _text_extractor = None
 
-    _item_extractors: set = None
+    _link_explorer: LinkExplorer
 
     _extract_manager = None
 
@@ -143,7 +143,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         :param selector: selector from "news-list page"
         :return: yield `scrapy.http.Request` instance
         """
-        for path_or_url in self._link_extractor.safe_extract_from(selector):
+        for path_or_url in self.link_explorer.yield_links(selector):
             if '://' in path_or_url:
                 url = path_or_url
                 path = urlparse(url)[2]
@@ -161,6 +161,18 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     def allowed_domains(self):
         return [self._check_field_implementation('_start_domain'), ]
 
+    @property
+    def link_explorer(self):
+        if hasattr(self, '_link_explorer'):
+            pass
+        elif hasattr(self, '_link_extractor'):
+            warnings.warn(
+                'Assign `LinkExplorer` instance to `_link_explorer` attribute.')
+            self._link_explorer = self._link_extractor
+        else:
+            raise AttributeError('Missing attribute with `LinkExplorer` instance.')
+        return self._link_explorer
+
     def start_requests(self):
         url = '{scheme}://{domain}/{path}'.format(
             scheme=self._check_field_implementation('_scheme'),
@@ -174,13 +186,11 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         extractors = [
             self._text_extractor,
             self._tags_extractor,
-            self._header_extractor,
-            self._link_extractor, ]
+            self._header_extractor,]
         if isinstance(self._extract_manager, ExtractManager):
             return self._extract_manager
         elif all(extractors):
             return ExtractManager(
-                link_extractor=self._link_extractor,
                 header_extractor=self._header_extractor,
                 tags_extractor=self._tags_extractor,
                 text_extractor=self._text_extractor,

@@ -3,7 +3,7 @@ import logging
 import random
 import string
 from datetime import datetime
-from typing import List
+from typing import List, Sequence, Dict
 
 from scrapy import Spider
 from scrapy.exporters import BaseItemExporter
@@ -15,6 +15,7 @@ from .item import (
     URL, FINGERPRINT, DATE
 )
 from .utils.args import to_bool, to_str, from_set
+from .utils.check import check_obj_type
 from .proxy.modes import PROXY_MODES
 from .utils.helpers import collect_kwargs
 
@@ -340,72 +341,93 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
         return item
 
 
-class BaseExtractor(LoggableBase, abc.ABC):
+class FieldsStorageABC(abc.ABC):
 
-    name: str = None
+    Field = str
+    Value = str
 
-    exception_template = '!!! {type}: {message} !!!'
-
-    def __init__(self, logger: logging.Logger =None):
-        if logger is None:
-            logger = self.create_logger()
-        self.logger = logger
-
-        self._fields_storage = {field: None for field in self.fields}
-        self._is_ready = False
-
-    def create_logger(self, name=None):
-        logger = logging.getLogger(self.name)
-        logger.setLevel(logging.DEBUG)
-        return logger
-
-    def _format_exception(self, exception: Exception):
-        self.logger.exception(str(exception))
-        return self.exception_template.format(
-            type=type(exception), message=exception.args)
-
-    def _attr_checker(self, name, converter: type, default=None):
-        if hasattr(self, name):
-            return converter(getattr(self, name))
-        elif default is not None:
-            return default
-        else:
-            raise NotImplementedError(f"Please, implement attribute `{name}`.")
-
-    def _save_result(self, result: str, field: str = None):
-        if field is None:
-            field = self.name
-        if field not in self.fields:
-            raise ValueError
-        self._fields_storage[field] = str(result)
+    def __init__(self, fields: Sequence[Field]):
+        [check_obj_type(f, self.Field, f'Field') for f in fields]
+        self._fields = frozenset(fields)
 
     @abc.abstractmethod
-    def extract_from(self, obj: object) -> str:
+    def dict_copy(self) -> Dict[Field, Value]:
+        """
+        Returns dictionary copy
+        :return:
+        """
         pass
 
-    def safe_extract_from(self, obj: object) -> str:
-        try:
-            string = self.extract_from(obj)
-            self._save_result(string)
-            self.ready = True
-        except Exception as exc:
-            string = self._format_exception(exc)
-        return string
+    @abc.abstractmethod
+    def set(self, field: Field, value: Value):
+        """
+        Sets field's value if given ``field`` is allowed by ``_fields`` set.
+        :param field: ``str``
+        :param value: ``str``
+        :return: ``None``
+        """
+        pass
 
-    def get_dict(self):
-        return self._fields_storage.copy()
+    @abc.abstractmethod
+    def reset(self) -> None:
+        """
+        Drops fields' values.
+        :return: ``None``
+        """
+        pass
+
+
+class ExtractorABC(abc.ABC):
+
+    name: str
+
+    @abc.abstractmethod
+    def extract_from(self, obj: object) -> object:
+        """
+        Extracts object from given object.
+        :param obj: object to extract from
+        :return: extracted string
+        """
+        pass
+
+    @abc.abstractmethod
+    def safe_extract_from(self, obj: object) -> object:
+        """
+        Same as ``extract_from`` but catches all errors and resets fields
+        storage id any.
+        :param obj: object to extract from
+        :return: extracted object
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_dict(self) -> dict:
+        """
+        Returns collected field values.
+        :return: ``field`` to ``value`` dictionary
+        """
+        pass
+
+    # properties
+    @property
+    @abc.abstractmethod
+    def fields(self) -> frozenset:
+        """
+        Returns set of fields.
+        :return: ``frozenset`` object
+        """
+        pass
 
     @property
-    def fields(self):
-        return self._attr_checker('_fields', set, {self.name})
-
-    @property
+    @abc.abstractmethod
     def ready(self):
-        return self._is_ready
+        """
+        ``True`` means that field values were extracted.
+        :return: boolean
+        """
+        pass
 
     @ready.setter
+    @abc.abstractmethod
     def ready(self, val: bool):
-        self._is_ready = bool(val)
-
-    def __repr__(self):
-        return f'<{self.__class__.__name__} : "{self.name}">'
+        pass

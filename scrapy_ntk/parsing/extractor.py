@@ -1,13 +1,16 @@
-from scrapy.selector import SelectorList
+import typing
+import warnings
 
-from .parser import Parser, MediaCounter, ElementsChain
-from ..utils.func import FuncSequence
-from .middleware import HtmlMiddleware, select
+from scrapy.selector import SelectorList, Selector
+
 from .base_extractor import (
-    LINK, TEXT, ERRORS, MEDIA, TAGS, HEADER,
-    VoidExtractor, GeneratorCSSExtractor, JoinableExtractor,
-    MultipleCSSExtractor, SingleCSSExtractor, GeneratorCSSVoidExtractor,
+    VoidExtractor, JoinableCSSExtractor, CSSExtractor,
 )
+from .link_explorer import LinkExplorer
+from .middleware import HtmlMiddleware, select
+from .parser import Parser, MediaCounter, ElementsChain
+from ..item import TEXT, ERRORS, MEDIA, TAGS, HEADER
+from ..utils.func import FuncSequence
 
 
 # --- field mixins ---
@@ -24,10 +27,6 @@ class TagsExtractorMixin:
 class HeaderExtractorMixin:
     name = HEADER
     _fields = {HEADER}
-
-
-class LinkExtractorMixin:
-    name = LINK
 
 
 # --- Void Extractors ---
@@ -47,36 +46,32 @@ class HeaderVoidExtractor(HeaderExtractorMixin, VoidExtractor):
     pass
 
 
-class LinkVoidExtractor(LinkExtractorMixin, GeneratorCSSVoidExtractor):
-    pass
-
-
 # ===================
 #  actual extractors
 # ===================
 VOID_TAGS = TagsVoidExtractor()
 VOID_TEXT = TextVoidExtractor()
 VOID_HEADER = HeaderVoidExtractor()
-VOID_LINK = LinkVoidExtractor()
 
 
-class LinkExtractor(LinkExtractorMixin, MultipleCSSExtractor, GeneratorCSSExtractor):
+class LinkExtractor(LinkExplorer):
 
-    replace_with = []
-    allowed_ends = ['a::attr(href)']
+    def __init__(self, list_of_string_css_selectors: typing.List[str]):
+        warnings.warn('Use `parsing.link_explorer.LinkExplorer` instead.')
+        super().__init__(list_of_string_css_selectors=list_of_string_css_selectors)
 
 
-class HeaderExtractor(HeaderExtractorMixin, SingleCSSExtractor):
+class HeaderExtractor(HeaderExtractorMixin, CSSExtractor):
 
-    allowed_ends = ['::text']
+    allowed_ends = ['::text', ]
 
-    def select_from(self, selector: SelectorList) -> SelectorList:
+    def select_from(self, selector: Selector) -> SelectorList:
         selected = selector.css(self.string_selector)
         if not selected:
             raise RuntimeError('Failed to select.')
         return selected
 
-    def extract_from(self, selector: SelectorList) -> str:
+    def extract_from(self, selector: Selector) -> str:
         extracted_list = self.select_from(selector).extract()
         # `extracted_list` list must not be empty
         if len(extracted_list) == 1:
@@ -87,9 +82,9 @@ class HeaderExtractor(HeaderExtractorMixin, SingleCSSExtractor):
         return formatted
 
 
-class TagsExtractor(TagsExtractorMixin, SingleCSSExtractor, JoinableExtractor):
+class TagsExtractor(TagsExtractorMixin, JoinableCSSExtractor):
 
-    allowed_ends = ['::text']
+    allowed_ends = ['::text', ]
     raise_on_missed = False
 
     def extract_from(self, selector: SelectorList) -> str:
@@ -98,9 +93,10 @@ class TagsExtractor(TagsExtractorMixin, SingleCSSExtractor, JoinableExtractor):
         return converted
 
 
-class TextExtractor(TextExtractorMixin, JoinableExtractor):
+class TextExtractor(TextExtractorMixin, JoinableCSSExtractor):
 
     separator = '\n'
+    allowed_ends = ['', ]
 
     def __init__(self, string_css_selector: str,
                  parser_class: type,
@@ -133,7 +129,7 @@ class TextExtractor(TextExtractorMixin, JoinableExtractor):
         self.media_counter_class = media_counter_class
         self.parser_class = parser_class
 
-        super().__init__()
+        super().__init__(string_css_selector=string_css_selector)
 
     def select_from(self, selector: SelectorList):
         return self.middleware_container.process(selector)
@@ -176,11 +172,10 @@ class TextExtractor(TextExtractorMixin, JoinableExtractor):
 # - - - = ========== = - - -
 class ExtractManager:
 
-    def __init__(self, link_extractor: LinkExtractor =None,
+    def __init__(self,
                  header_extractor: HeaderExtractor =None,
                  text_extractor: TextExtractor =None,
                  tags_extractor: TagsExtractor =None, ):
-        self._check_type('link_extractor', link_extractor, LinkExtractor)
         self._check_type('header_extractor', header_extractor, HeaderExtractor)
         self._check_type('text_extractor', text_extractor, TextExtractor)
         self._check_type('tags_extractor', tags_extractor, TagsExtractor)
@@ -196,8 +191,7 @@ class ExtractManager:
                                     for e in self.item_extractors}
 
     def _check_type(self, name: str, extractor, klass: type):
-        if isinstance(extractor, VoidExtractor) or \
-                isinstance(extractor, GeneratorCSSVoidExtractor):
+        if isinstance(extractor, VoidExtractor):
             extractor.logger.warning(
                 '`{}` initialised with `extractor.VoidExtractor` '
                 'class and will not return any useful data.'.format(name))
@@ -216,7 +210,7 @@ class ExtractManager:
         if name is None and field is None:
             raise ValueError('You must specify `name` or `field` argument.')
         elif name is None and field is not None:
-            raise ValueError('You must pass in only one argument.')
+            raise ValueError('You must pass `name` or `field`, but not together.')
         elif name is not None:
             extractor = self._get_extractor_by_name(name)
             return_field = False
