@@ -1,7 +1,7 @@
 import typing
+import warnings
 
-from scrapy.selector import SelectorList
-from scrapy.http import HtmlResponse
+from scrapy.selector import SelectorList, Selector
 
 from ..utils.func import StronglyTypedFunc, FuncSequence
 
@@ -9,6 +9,7 @@ from ..utils.func import StronglyTypedFunc, FuncSequence
 class MiddlewareContainer(FuncSequence):
 
     def __init__(self, middleware_list: typing.List[StronglyTypedFunc]):
+        warnings.warn('Use `utils.func.FuncSequence` class instead.')
         super().__init__(*middleware_list)
 
 
@@ -18,15 +19,19 @@ class SelectMiddleware(StronglyTypedFunc):
     output_type = SelectorList
 
 
-class HTMLMiddleware(StronglyTypedFunc):
+class HtmlMiddleware(StronglyTypedFunc):
+    """
+    It takes ``selector`` property value from ``HtmlResponse`` and
+    returns ``SelectorList``.
+    """
 
-    input_type = HtmlResponse
+    input_type = Selector
     output_type = SelectorList
 
 
 # shortcuts
 SMW = SelectMiddleware
-HMW = HTMLMiddleware
+HMW = HtmlMiddleware
 
 
 # ====================

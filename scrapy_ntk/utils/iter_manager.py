@@ -117,7 +117,7 @@ class IterManager:
                  exclude_value_type: type =None,
                  exclude_iterator: Iterator =None, exclude_default=None,
                  max_iterations: int or None =None,
-                 max_exclude_matches: int or None =None,
+                 max_exclude_strike: int or None =None,
                  max_total_excluded: int or None =None,
                  max_returned_values: int or None =None,
                  case_processors: Sequence[Callable] =None,
@@ -147,9 +147,9 @@ class IterManager:
         self._total_iterations_counter = CounterWithThreshold(
             threshold=self._total_iterations_threshold)
 
-        self._exclude_matches_threshold = Threshold(max_exclude_matches)
-        self._exclude_matches_counter = CounterWithThreshold(
-            threshold=self._exclude_matches_threshold)
+        self._exclude_strike_threshold = Threshold(max_exclude_strike)
+        self._exclude_strike_counter = CounterWithThreshold(
+            threshold=self._exclude_strike_threshold)
 
         self._total_excluded_threshold = Threshold(max_total_excluded)
         self._total_excluded_counter = CounterWithThreshold(
@@ -211,13 +211,13 @@ class IterManager:
         :return: True if value must be returned, else False
         """
         if self._exclude_checker.check_next(context.exclude_value):
-            if self._exclude_matches_counter.add():
+            if self._exclude_strike_counter.add():
                 context.set_close_reason('Exclude matches threshold reached.')
             if self._total_excluded_counter.add():
                 context.set_close_reason('Total excluded threshold reached.')
             return False
         else:
-            self._exclude_matches_counter.drop()
+            self._exclude_strike_counter.drop()
             return True
 
     def _return(self, context: BaseContext) -> object:
