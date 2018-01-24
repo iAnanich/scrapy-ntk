@@ -219,7 +219,7 @@ class SHubFetcher:
             exclude_value_type=int,
             exclude_default=0,
             max_iterations=self.maximum_fetched_jobs,
-            max_exclude_matches=self.maximum_excluded_matches,
+            max_exclude_strike=self.maximum_excluded_matches,
             max_returned_values=self.maximum_returned_jobs,
             max_total_excluded=self.maximum_total_excluded,
             before_finish=before_finish,

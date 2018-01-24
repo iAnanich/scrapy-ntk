@@ -64,9 +64,11 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     _tags_extractor = None
     _text_extractor = None
 
+    _extract_manager: ExtractManager = None
+
     _link_explorer: LinkExplorer
 
-    _extract_manager = None
+    _max_exclude_strike: int or None = None
 
     def __init__(self, *args, **kwargs):
         self.cloud: ScrapinghubManager = None
@@ -131,7 +133,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             exclude_value_type=str,
             exclude_default=exclude_default,
             exclude_iterator=scraped_urls_iterator,
-            max_exclude_matches=None,  # TODO: move to settings
+            max_exclude_strike=self._max_exclude_strike,
             context_processor=context_processor,
         )
         return iter(iter_manager)
