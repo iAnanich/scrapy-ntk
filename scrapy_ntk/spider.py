@@ -31,7 +31,6 @@ from .item import (
 from .parsing import ExtractManager, LinkExplorer
 from .scraping_hub.manager import ScrapinghubManager
 from .scraping_hub.fetcher import SHubFetcher
-from .utils import IterManager, BaseContext
 
 
 def _get_item(lst: list, fingerprint: int, default=None):
@@ -116,27 +115,14 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
             return urls_iterator
 
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
-        scraped_urls_iterator = (item[URL] for item in fetcher.fetch_items())
-        # actual URL can not be empty
-        exclude_default = ''
-
-        def context_processor(value: Tuple[str, str], context_type: type) -> BaseContext:
-            url, path = value
-            ctx = context_type(value=value, exclude_value=url)
-            ctx['path'] = path
-            return ctx
-
-        iter_manager = IterManager(
-            general_iterator=urls_iterator,
-            value_type=tuple,
-            return_type=tuple,
-            exclude_value_type=str,
-            exclude_default=exclude_default,
-            exclude_iterator=scraped_urls_iterator,
-            max_exclude_strike=self._max_exclude_strike,
-            context_processor=context_processor,
-        )
-        return iter(iter_manager)
+        already_scraped_urls = frozenset(item[URL] for item in fetcher.fetch_items())
+        for url, path in urls_iterator:
+            if url in already_scraped_urls:
+                self.logger.debug(
+                    f'Skipping article with following URL path because it has '
+                    f'been scraped in the past and can be found on ScrapingHub: '
+                    f'{path}')
+            yield url, path
 
     def _yield_urls_from_selector(self, selector: Selector):
         """
