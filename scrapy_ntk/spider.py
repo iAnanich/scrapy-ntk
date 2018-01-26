@@ -122,7 +122,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
                     f'Skipping article with following URL path because it has '
                     f'been scraped in the past and can be found on ScrapingHub: '
                     f'{path}')
-            yield url, path
+            else:
+                yield url, path
 
     def _yield_urls_from_selector(self, selector: Selector):
         """
