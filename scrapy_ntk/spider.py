@@ -72,8 +72,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     def __init__(self, *args, **kwargs):
         self.cloud: ScrapinghubManager = None
         # call it to check
+        # TODO: move to another class
         self.extract_manager = self.setup_extract_manager()
-        self._item_extractors = self.extract_manager.item_extractors
 
         super().__init__(*args, **kwargs)
 
@@ -106,8 +106,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     def parse_article(self, response: HtmlResponse):
         self.logger.info('Started extracting from {}'.format(response.url))
         # produce item
-        yield from self._yield_article_item(
-            response, **self.extract_manager.extract_all(response.selector))
+        extracted_fields = self.extract_manager.extract_all(response.selector)
+        yield self.new_article_item(response, **extracted_fields)
 
     def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         if self.cloud is None:
@@ -163,13 +163,17 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         return self._link_explorer
 
     def start_requests(self):
-        url = '{scheme}://{domain}/{path}'.format(
+        news_root_url = self.news_root_url
+        self.logger.info(f'News root URL: "{news_root_url}".')
+        yield self.new_request(
+            url=news_root_url, callback=self.parse, meta=self.request_meta)
+
+    @property
+    def news_root_url(self):
+        return '{scheme}://{domain}/{path}'.format(
             scheme=self._check_field_implementation('_scheme'),
             domain=self._check_field_implementation('_start_domain'),
             path=self._check_field_implementation('_start_path'))
-        news_page_request = self.new_request(
-            url=url, callback=self.parse, meta=self.request_meta)
-        yield news_page_request
 
     def setup_extract_manager(self) -> ExtractManager:
         extractors = [
@@ -192,6 +196,8 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
     #  helpers
     # =========
 
+    # TODO: rename to alias
+    # TODO: handle query too
     def _convert_path_to_fingerprint(self, path: str) -> str:
         raise NotImplementedError
 
@@ -215,7 +221,7 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
 class TestingSpider(BaseArticleSpider, abc.ABC):
 
     def parse(self, response: HtmlResponse):
-        yield from self._yield_article_item(
+        yield self.new_article_item(
             response, **{
                 TAGS: '--',
                 TEXT: 'Testing where and how spider exports data.',

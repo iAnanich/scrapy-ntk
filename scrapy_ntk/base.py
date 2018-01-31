@@ -46,7 +46,7 @@ class BaseArticleSpider(abc.ABC, Spider):
 
         super().__init__(*args, **kwargs)
 
-    def _yield_article_item(self, response: Response, **kwargs):
+    def new_article_item(self, response: Response, **kwargs):
         """
         Yields `ArticleItem` instances with `url` and `fingerprint` arguments
         extracted from given `response` object.
@@ -59,12 +59,15 @@ class BaseArticleSpider(abc.ABC, Spider):
         except KeyError:
             # case when used with `crawl` command
             fingerprint = self.get_random_fingerprint()
-        kwargs.update({
+        # initialise default values
+        dict_item = {
             URL: response.url,
             FINGERPRINT: fingerprint,
             DATE: datetime.now()
-        })
-        yield self._article_item_class(**kwargs)
+        }
+        # override default values
+        dict_item.update(kwargs)
+        return self._article_item_class(**dict_item)
 
     def new_request(self, url, callback=None, method='GET', headers=None,
                     body=None, cookies=None, meta=None, encoding='utf-8',

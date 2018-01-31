@@ -1,5 +1,6 @@
 import abc
 import logging
+from collections import defaultdict
 from datetime import datetime
 from typing import List, Tuple, Type, TypeVar
 
@@ -65,6 +66,7 @@ class BaseGSpreadRow(abc.ABC):
         self.serialized = self.serialize(self.item_dict)
 
     def serialize(self, item_dict: dict) -> dict:
+        parsed = defaultdict(lambda: self.empty_cell)
         for key, value in item_dict.items():
             if key == DATE and isinstance(value, datetime):
                 new_value = value.strftime(cfg.item_datefmt)
@@ -72,8 +74,8 @@ class BaseGSpreadRow(abc.ABC):
                 new_value = ''
             else:
                 new_value = str(value)
-            item_dict[key] = new_value
-        return item_dict
+            parsed[key] = new_value
+        return parsed
 
     def __iter__(self):
         for column in self.columns_order:
