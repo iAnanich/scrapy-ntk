@@ -28,6 +28,7 @@ class BaseArticleSpider(abc.ABC, Spider):
     _article_item_class = ArticleItem
 
     _meta_fingerprint_key = f'article__{FINGERPRINT}'
+    _meta_datetime_key = f'article__{DATE}'
 
     _default_request_meta: dict = None
 
@@ -54,16 +55,15 @@ class BaseArticleSpider(abc.ABC, Spider):
         :param kwargs: fields for `ArticleItem`
         :return: yields `ArticleItem` instance
         """
-        try:
-            fingerprint = response.meta[self._meta_fingerprint_key]
-        except KeyError:
-            # case when used with `crawl` command
-            fingerprint = self.get_random_fingerprint()
+        meta = dict(response.meta)
+        fingerprint = meta.get(self._meta_fingerprint_key, self.get_random_fingerprint())
+        date_time = meta.get(self._meta_datetime_key, datetime.utcnow())
+
         # initialise default values
         dict_item = {
             URL: response.url,
             FINGERPRINT: fingerprint,
-            DATE: datetime.now()
+            DATE: date_time,
         }
         # override default values
         dict_item.update(kwargs)

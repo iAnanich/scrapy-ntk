@@ -16,6 +16,7 @@
 """
 
 import abc
+import datetime
 import warnings
 from typing import Iterator, Tuple
 from urllib.parse import urlparse, urlunparse
@@ -92,13 +93,23 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         :param response: `scrapy.http.Response` from "news-list page"
         :return: yields requests to "article pages"
         """
+        # indicates time when spider scraped links to articles
+        date_time = datetime.datetime.utcnow()  # TODO: replace with func from helpers
+
         # parse news root page
         url_path_iterator = self._yield_urls_from_selector(response.selector)
 
         for url, path in self._handle_url_path_iterator(url_path_iterator):
             fingerprint = self._convert_path_to_fingerprint(path)
+
+            # copy default request meta
             meta = self.request_meta
-            meta.update({self._meta_fingerprint_key: fingerprint})
+
+            meta.update({
+                self._meta_fingerprint_key: fingerprint,
+                self._meta_datetime_key: date_time,
+            })
+
             yield self.new_request(
                 url=url,
                 callback=self.parse_article,
