@@ -92,9 +92,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         :param response: `scrapy.http.Response` from "news-list page"
         :return: yields requests to "article pages"
         """
-        # parse response and yield requests with `parse_article` "callback"
-        urls_iterator = self._yield_urls_from_selector(response.selector)
-        for url, path in self._get_urls_iterator(urls_iterator):
+        # parse news root page
+        url_path_iterator = self._yield_urls_from_selector(response.selector)
+
+        for url, path in self._handle_url_path_iterator(url_path_iterator):
             fingerprint = self._convert_path_to_fingerprint(path)
             meta = self.request_meta
             meta.update({self._meta_fingerprint_key: fingerprint})
@@ -109,10 +110,10 @@ class NewsArticleSpider(BaseArticleSpider, abc.ABC):
         extracted_fields = self.extract_manager.extract_all(response.selector)
         yield self.new_article_item(response, **extracted_fields)
 
-    def _get_urls_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
+    def _handle_url_path_iterator(self, urls_iterator) -> Iterator[Tuple[str, str]]:
         if self.cloud is None:
             # pass all incoming URLs
-            return urls_iterator
+            yield from urls_iterator
 
         fetcher = SHubFetcher.from_shub_defaults(self.cloud)
         already_scraped_urls = frozenset(item[URL] for item in fetcher.fetch_items())
