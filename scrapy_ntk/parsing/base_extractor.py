@@ -5,36 +5,47 @@ import typing
 from scrapy.selector import SelectorList
 
 from .parser import ESCAPE_CHAR_PAIRS
-from ..base import ExtractorABC, LoggableBase, FieldsStorageABC
+from ..base import ExtractorABC, LoggableBase, BaseStringFieldsStorage
 from ..item import TAGS, TEXT, HEADER
 
 
 POSSIBLE_EXTRACTOR_NAMES = frozenset({TEXT, HEADER, TAGS})
 
 
-class DictFieldsStorage(FieldsStorageABC):
+def check_if_ready(entity_name: str):
+    def decorator(func):
+        def decorated(self, *args, **kwargs):
+            if self.ready:
+                return func(self, *args, **kwargs)
+            else:
+                raise TypeError(
+                    f'This "{entity_name}" {repr(self)} is not ready yet.'
+                )
+        return decorated
+    return decorator
 
-    def __init__(self, fields: typing.Sequence[str]):
-        super().__init__(fields)
+
+class DictStringsFieldsStorage(BaseStringFieldsStorage):
+
+    def __init__(self, field_names: typing.FrozenSet[str]):
+        super().__init__(field_names)
 
         self._storage: dict = self._new_storage()
 
     def _new_storage(self) -> dict:
-        return {k: None for k in self._fields}
+        return {k: None for k in self._all_field_names}
 
-    def reset(self):
-        self._storage = self._new_storage()
+    def _reset(self):
+        self._storage.clear()
 
-    def set(self, field: str, value: str):
-        if field not in self._fields:
-            raise ValueError
-        self._storage[field] = value
+    def _set(self, valid_field_name: str, valid_field_value: str):
+        self._storage[valid_field_name] = valid_field_value
 
-    def dict_copy(self) -> typing.Dict[str, str]:
-        return self._storage.copy()
+    def _get(self, valid_field_name: str) -> str:
+        return self._storage[valid_field_name]
 
 
-DefaultFieldsStorage = DictFieldsStorage
+DefaultFieldsStorage = DictStringsFieldsStorage
 
 
 class BaseExtractor(ExtractorABC, LoggableBase, abc.ABC):
