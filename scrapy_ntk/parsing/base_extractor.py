@@ -79,29 +79,40 @@ class BaseExtractor(ExtractorABC, LoggableBase, abc.ABC):
         else:
             raise NotImplementedError(f"Please, implement attribute `{name}`.")
 
-    def _save_result(self, result: str, field: str = None):
-        if field is None:
-            field = self.name
-        if field not in self.fields:
-            raise ValueError
-        self.fields_storage.set(field, str(result))
+    def _save_result(self, result: str or None, field: str = None):
+        if isinstance(result, str):
+            self.fields_storage.set(field or self.name, str(result))
+        elif result is None and isinstance(self, VoidExtractor):
+            # left empty field value in the field storage
+            pass
+        else:
+            raise TypeError(
+                f'Got "{result}" with {type(result)} for "{field}", while'
+                f'string or NoneType object expected.'
+            )
 
     @abc.abstractmethod
     def extract_from(self, obj: object) -> str:
         pass
 
     def safe_extract_from(self, obj: object) -> str:
+        self.ready = False
         try:
             string = self.extract_from(obj)
-            self._save_result(string)
-            self.ready = True
         except Exception as exc:
             string = self._format_exception(exc)
-            self.fields_storage.reset()
+        self._save_result(string)
+        self.ready = True
         return string
 
-    def get_dict(self):
+    @check_if_ready('extractor')
+    def get_dict(self) -> dict:
         return self.fields_storage.dict_copy()
+
+    @check_if_ready('extractor')
+    def release(self) -> dict:
+        self.ready = False
+        return self.fields_storage.release()
 
     # properties
     @property
@@ -225,5 +236,5 @@ class VoidExtractor(BaseExtractor):
 
         super().__init__()
 
-    def extract_from(self, selector: SelectorList) -> str:
-        return ''
+    def extract_from(self, selector: SelectorList) -> None:
+        return None
