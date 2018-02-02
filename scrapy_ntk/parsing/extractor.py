@@ -1,10 +1,12 @@
 import typing
 import warnings
+import itertools
 
 from scrapy.selector import SelectorList, Selector
 
 from .base_extractor import (
-    VoidExtractor, JoinableCSSExtractor, CSSExtractor,
+    VoidExtractor, JoinableCSSExtractor, CSSExtractor, BaseExtractor,
+    DefaultFieldsStorage
 )
 from .link_explorer import LinkExplorer
 from .middleware import HtmlMiddleware, select
@@ -33,9 +35,9 @@ class HeaderExtractorMixin:
 class TextVoidExtractor(TextExtractorMixin, VoidExtractor):
 
     def extract_from(self, obj: object):
-        self._save_result('', ERRORS)
-        self._save_result('', MEDIA)
-        return ''
+        self._save_result(None, ERRORS)
+        self._save_result(None, MEDIA)
+        return None
 
 
 class TagsVoidExtractor(TagsExtractorMixin, VoidExtractor):
@@ -172,6 +174,8 @@ class TextExtractor(TextExtractorMixin, JoinableCSSExtractor):
 # - - - = ========== = - - -
 class ExtractManager:
 
+    fields_storage_type = DefaultFieldsStorage
+
     def __init__(self,
                  header_extractor: HeaderExtractor =None,
                  text_extractor: TextExtractor =None,
@@ -180,15 +184,15 @@ class ExtractManager:
         self._check_type('text_extractor', text_extractor, TextExtractor)
         self._check_type('tags_extractor', tags_extractor, TagsExtractor)
 
-        self.item_extractors = frozenset([
+        self.item_extractors: typing.FrozenSet[BaseExtractor] = frozenset([
             text_extractor,
             tags_extractor,
             header_extractor
         ])
-        self._fields_dict = {k: None for k in self.fields}
         self._item_names_dict = {e.name: False for e in self.item_extractors}
         self._name_to_field_dict = {e.name: tuple(e.fields)
                                     for e in self.item_extractors}
+        self._all_fields_storage = self.fields_storage_type(frozenset(self.fields))
 
     def _check_type(self, name: str, extractor, klass: type):
         if isinstance(extractor, VoidExtractor):
@@ -200,11 +204,11 @@ class ExtractManager:
                             .format(name, klass.__class__))
         self.__setattr__(name, extractor)
 
-    def get_dict(self):
-        def raise_error():
-            raise ValueError('Not all extractors are ready yet.')
-        return {k: v if v is not None else raise_error()
-                for k, v in self._fields_dict.items()}
+    def get_dict(self) -> dict:
+        return self._all_fields_storage.dict_copy()
+
+    def release(self) -> dict:
+        return self._all_fields_storage.release()
 
     def extract(self, obj, name: str=None, field: str=None) -> dict:
         if name is None and field is None:
@@ -218,10 +222,7 @@ class ExtractManager:
             extractor = self._get_extractor_by_field(field)
             return_field = True
         extractor.safe_extract_from(obj)
-        dictionary = extractor.get_dict()
-        self._save_result(
-            dictionary,
-            name=self._field_to_name(field) if return_field else name)
+        dictionary = self.save_result_from_extractor(extractor)
         if return_field:
             return {field: dictionary[field]}
         else:
@@ -229,31 +230,30 @@ class ExtractManager:
 
     def extract_all(self, obj) -> dict:
         for name in self.names:
-            self.extract(obj, name)
-        result = self.get_dict()
-        return result
+            self.extract(obj, name=name)
+        return self.release()
 
-    def _get_extractor_by_name(self, name: str):
+    def _get_extractor_by_name(self, name: str) -> BaseExtractor:
         for extractor in self.item_extractors:
             if extractor.name == name:
                 return extractor
         else:
             raise ValueError('No extractors with this name')
 
-    def _get_extractor_by_field(self, field: str):
+    def _get_extractor_by_field(self, field: str) -> BaseExtractor:
         for extractor in self.item_extractors:
             if field in extractor.fields:
                 return extractor
         else:
             raise ValueError('No extractors with this name')
 
-    def _save_result(self, dictionary: dict, name: str):
-        if name not in self._item_names_dict.keys():
-            raise ValueError('No extractors with this name.')
-        self._fields_dict.update(dictionary)
-        self._item_names_dict[name] = True
+    def save_result_from_extractor(self, extractor: BaseExtractor) -> dict:
+        dictionary = extractor.release()
+        self._all_fields_storage.update(dictionary)
+        self._item_names_dict[extractor.name] = True
+        return dictionary
 
-    def _field_to_name(self, field):
+    def _field_to_name(self, field) -> str:
         for name, fields in self._name_to_field_dict.items():
             if field in fields:
                 return name

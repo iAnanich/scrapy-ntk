@@ -2,8 +2,16 @@ import typing
 
 from .check import check_obj_type, raise_or_none
 
-POSITIVE = frozenset(['TRUE', 'True', 'true', 'T', 't', '+', '1'])
-NEGATIVE = frozenset(['FALSE', 'False', 'false', 'F', 'f', '-', '0'])
+POSITIVE = frozenset([
+    'TRUE', 'True', 'true', 'T', 't',
+    'YES', 'Yes', 'yes', 'Y', 'y',
+    '+', '1',
+])
+NEGATIVE = frozenset([
+    'FALSE', 'False', 'false', 'F', 'f',
+    'NO', 'No', 'no', 'N', 'n',
+    '-', '0',
+])
 
 
 def to_string(option: str, option_length: int=None) -> str:

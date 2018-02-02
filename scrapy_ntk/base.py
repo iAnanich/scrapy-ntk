@@ -3,7 +3,7 @@ import logging
 import random
 import string
 from datetime import datetime
-from typing import List, Sequence, Dict
+from typing import List, FrozenSet, Dict, NoReturn
 
 from scrapy import Spider
 from scrapy.exporters import BaseItemExporter
@@ -28,6 +28,7 @@ class BaseArticleSpider(abc.ABC, Spider):
     _article_item_class = ArticleItem
 
     _meta_fingerprint_key = f'article__{FINGERPRINT}'
+    _meta_datetime_key = f'article__{DATE}'
 
     _default_request_meta: dict = None
 
@@ -54,16 +55,15 @@ class BaseArticleSpider(abc.ABC, Spider):
         :param kwargs: fields for `ArticleItem`
         :return: yields `ArticleItem` instance
         """
-        try:
-            fingerprint = response.meta[self._meta_fingerprint_key]
-        except KeyError:
-            # case when used with `crawl` command
-            fingerprint = self.get_random_fingerprint()
+        meta = dict(response.meta)
+        fingerprint = meta.get(self._meta_fingerprint_key, self.get_random_fingerprint())
+        date_time = meta.get(self._meta_datetime_key, datetime.utcnow())
+
         # initialise default values
         dict_item = {
             URL: response.url,
             FINGERPRINT: fingerprint,
-            DATE: datetime.now()
+            DATE: date_time,
         }
         # override default values
         dict_item.update(kwargs)
@@ -344,17 +344,32 @@ class BaseArticlePipeline(LoggableBase, abc.ABC):
         return item
 
 
+# TODO: move to separate file
 class FieldsStorageABC(abc.ABC):
+    """
+    Defines interface for `FieldsStorage` classes.
+    """
 
-    Field = str
-    Value = str
-
-    def __init__(self, fields: Sequence[Field]):
-        [check_obj_type(f, self.Field, f'Field') for f in fields]
-        self._fields = frozenset(fields)
+    FieldNameType: type = object
+    FieldValueType: type = object
+    FieldsDictType: type = Dict[FieldNameType, FieldValueType]
 
     @abc.abstractmethod
-    def dict_copy(self) -> Dict[Field, Value]:
+    def __init__(self, field_names: FrozenSet[FieldNameType]):
+        self._all_field_names: frozenset = frozenset(field_names)
+        self._filled_field_names: set = set()
+
+    @abc.abstractmethod
+    def update(self, dictionary: FieldsDictType) -> NoReturn:
+        """
+        Behaves as ``dict.update`` method.
+        :param dictionary:
+        :return:
+        """
+        pass
+
+    @abc.abstractmethod
+    def dict_copy(self) -> FieldsDictType:
         """
         Returns dictionary copy
         :return:
@@ -362,20 +377,174 @@ class FieldsStorageABC(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def set(self, field: Field, value: Value):
+    def set(self, field_name: FieldNameType, field_value: FieldValueType) -> NoReturn:
         """
-        Sets field's value if given ``field`` is allowed by ``_fields`` set.
-        :param field: ``str``
-        :param value: ``str``
+        Validates field and value, then sets field's value if given ``field``
+        is allowed by all fields set, and updates set of filled fields.
+        :param field_name: ``str``
+        :param field_value: ``str``
         :return: ``None``
         """
         pass
 
     @abc.abstractmethod
-    def reset(self) -> None:
+    def get(self, field_name: FieldNameType) -> FieldValueType:
+        """
+        Validates field and returns it's value.
+        :param field_name: field's name
+        :raise KeyError: if no such ``field_name`` was found.
+        :return: related value
+        """
+        pass
+
+    @abc.abstractmethod
+    def reset(self) -> NoReturn:
+        """
+        Drops fields' values, and clears set of filled fields.
+        :return: ``None``
+        """
+        pass
+
+    @abc.abstractmethod
+    def release(self) -> FieldsDictType:
+        """
+        Returns dict copy and clears storage.
+        :return: field name to it's value mapping.
+        """
+        pass
+
+    @abc.abstractmethod
+    def is_full(self) -> bool:
+        """
+        Checks whether or not all fields were filled wis valid values.
+        :return: ``True`` if all fields has their values.
+        """
+        pass
+
+    @abc.abstractmethod
+    def has_value(self, field_name: FieldNameType) -> bool:
+        """
+        Checks whether or net given ``field`` filed has it's value.
+        :param field_name: one of the allowed fields.
+        :return: ``True`` if field has value.
+        """
+
+    @abc.abstractmethod
+    def validate_field_name(self, field_name) -> FieldNameType:
+        """
+        Validates field name, by just searching for it in set of allowed fields.
+        :param field_name: field name to validate
+        :raise KeyError: if no such ``field_name`` was found.
+        :return: validated field name
+        """
+        pass
+
+    @abc.abstractmethod
+    def validate_field_value(self, field_value, *,
+                             valid_field_name: FieldNameType) -> FieldValueType:
+        """
+        Validates value. Uses ``valid_field_name`` for error messages.
+        :param field_value: value to validate
+        :param valid_field_name: valid field name.
+        :raise ValueError: no such case yet
+        :raise TypeError: if ``field_value`` is not an instance of ``FieldValueType``
+        :return: validated value
+        """
+        pass
+
+
+class BaseStringFieldsStorage(FieldsStorageABC, metaclass=abc.ABCMeta):
+
+    FieldNameType = str
+    FieldValueType = str
+    FieldsDictType = Dict[FieldNameType, FieldValueType]
+
+    def __init__(self, field_names: FrozenSet[FieldNameType]):
+        for f in field_names:
+            check_obj_type(f, self.FieldNameType, f'Field')
+
+        self._all_field_names: frozenset = frozenset(field_names)
+        self._filled_field_names: set = set()
+
+        # do nothing
+        super().__init__(field_names)
+
+    def validate_field_name(self, field_name) -> FieldNameType:
+        if field_name not in self._all_field_names:
+            raise KeyError(
+                f'No such "{field_name}" field name found.'
+            )
+        return field_name
+
+    def validate_field_value(self, field_value, *,
+                             valid_field_name: FieldNameType) -> FieldValueType:
+        check_obj_type(field_value, str, f'Value of the "{valid_field_name}" field.')
+        return field_value
+
+    def set(self, field_name: FieldNameType, field_value: FieldValueType) -> NoReturn:
+        valid_field_name = self.validate_field_name(field_name)
+        valid_field_value = self.validate_field_value(
+            field_value, valid_field_name=valid_field_name)
+        self._set(valid_field_name=valid_field_name, valid_field_value=valid_field_value)
+        self._filled_field_names.add(valid_field_name)
+
+    def get(self, field: FieldNameType) -> FieldValueType:
+        valid_field_name = self.validate_field_name(field)
+        return self._get(valid_field_name=valid_field_name)
+
+    def update(self, dictionary: FieldsDictType) -> NoReturn:
+        for key, value in dictionary.items():
+            self.set(field_name=key, field_value=value)
+
+    def reset(self) -> NoReturn:
+        self._reset()
+        self._filled_field_names.clear()
+
+    def release(self) -> FieldsDictType:
+        res = self.dict_copy()
+        self.reset()
+        return res
+
+    def has_value(self, field_name: FieldNameType) -> bool:
+        if field_name in self._filled_field_names:
+            return True
+        elif field_name in self._all_field_names:
+            return False
+        else:
+            raise KeyError(f'Unknown field: "{field_name}.')
+
+    def is_full(self) -> bool:
+        return self._filled_field_names == self._all_field_names
+
+    def dict_copy(self) -> dict:
+        return {field_name: self.get(field_name)
+                for field_name in self._filled_field_names}
+
+    @abc.abstractmethod
+    def _set(self, valid_field_name: FieldNameType, valid_field_value: FieldValueType) -> NoReturn:
+        """
+        Abstraction over implementation details for setting ``field``'s
+        ``value`` without overriding it.
+        :param valid_field_name: validated field
+        :param valid_field_value: validated value
+        :return:
+        """
+        pass
+
+    @abc.abstractmethod
+    def _reset(self) -> NoReturn:
         """
         Drops fields' values.
         :return: ``None``
+        """
+        pass
+
+    @abc.abstractmethod
+    def _get(self, valid_field_name: FieldNameType) -> FieldValueType:
+        """
+        Returns value related to given ``field`` field.
+        :raise KeyError: if no such ``field_name`` was found.
+        :return: related value
         """
         pass
 
